@@ -139,6 +139,15 @@ async fn main() {
         Err(e) => eprintln!("[adom-sidecar] http429: reparo falhou: {e}"),
     }
 
+    // Reparo único das filas presas do Mico: fantasmas `done/releases=0`
+    // (conclusão falsa do motor antigo) e `partial` legado que o take_next
+    // nunca serve. Mesma régua dos reparos acima: falha não impede o boot.
+    match store.repair_mico_stuck_once() {
+        Ok(0) => {}
+        Ok(n) => eprintln!("[adom-sidecar] mico: {n} obra(s) presas de volta à fila"),
+        Err(e) => eprintln!("[adom-sidecar] mico: reparo falhou: {e}"),
+    }
+
     // ── 4. Cria o cliente HTTP ───────────────────────────────────────
     // O cliente será integrado ao motor quando o Agente 1 conectar a camada HTTP.
     let _http_client = SidecarHttpClient::new(node_url.clone(), auth_token.clone());

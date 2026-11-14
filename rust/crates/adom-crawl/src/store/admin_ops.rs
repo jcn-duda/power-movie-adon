@@ -13,8 +13,9 @@
 //!   cards nunca gravados.
 //!
 //! `clear_site` (o "Zerar site", com o veredito da sonda preservado) e os
-//! reparos únicos de boot (Vaca no-torrent; tries de adiamento 429) completam
-//! as ações do painel. Fica fora do `ops.rs` pela catraca de 400 linhas.
+//! reparos únicos de boot (Vaca no-torrent; tries de adiamento 429; filas
+//! presas do Mico) completam as ações do painel. Fica fora do `ops.rs` pela
+//! catraca de 400 linhas.
 
 use rusqlite::params;
 
@@ -116,6 +117,42 @@ impl CrawlStore {
         )?;
         self.set_state(SITE, MARK, &report.requeued.to_string())?;
         Ok(report.requeued)
+    }
+
+    /// Reparo ÚNICO das filas presas do Mico (dois danos conhecidos):
+    /// - fantasma `done/releases=0`: o motor antigo concluía a série com todos
+    ///   os passes vazios como `done` — conclusão falsa. Reset COMPLETO (mesma
+    ///   régua da releitura do `enqueue_discovered`): a obra é relida do zero e
+    ///   o motor atual dá o veredito honesto (`no-torrent` ou acervo);
+    /// - `partial` LEGADO: o motor atual grava `pending` + `next_at` (contrato
+    ///   do `mark_result`), então `partial` persistente é legado que o
+    ///   `take_next` nunca serve. Volta à fila PRESERVANDO progresso e acervo:
+    ///   a série retoma de onde parou em vez de re-sondar tudo.
+    ///
+    /// O marcador em `crawl_state` impede repetir a cada boot; `done` com
+    /// acervo, `no-torrent` e os demais sites não se tocam.
+    pub fn repair_mico_stuck_once(&self) -> Result<u32, StoreError> {
+        const SITE: &str = "mico";
+        const MARK: &str = "repair:mico-filas-v1";
+        if self.get_state(SITE, MARK)?.is_some() {
+            return Ok(0);
+        }
+        let fantasmas = self.requeue_matching(
+            SITE,
+            "status = 'done' AND releases = 0",
+            "UPDATE crawl_url SET status = 'pending', tries = 0, next_at = 0, \
+             error = '', releases = 0, progress = '' \
+             WHERE site = ?1 AND status = 'done' AND releases = 0",
+        )?;
+        let parciais = self.requeue_matching(
+            SITE,
+            "status = 'partial'",
+            "UPDATE crawl_url SET status = 'pending', tries = 0, next_at = 0, \
+             error = '' WHERE site = ?1 AND status = 'partial'",
+        )?;
+        let total = fantasmas.requeued + parciais.requeued;
+        self.set_state(SITE, MARK, &total.to_string())?;
+        Ok(total)
     }
 
     /// Zera site (destrutivo): apaga todas as URLs, estado, rodadas e pendências

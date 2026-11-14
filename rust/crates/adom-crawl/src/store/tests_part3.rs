@@ -220,6 +220,93 @@ fn reparo_http429_zera_tries_uma_vez_e_nao_toca_o_resto() {
     assert_eq!(store.repair_http429_once().expect("repete"), 0);
 }
 
+// ─── reparo único das filas presas do Mico ──────────────────────────────────
+
+/// O reparo devolve à fila os dois danos conhecidos do Mico, UMA vez:
+///
+/// - fantasma `done/releases=0` (conclusão falsa de passes vazios) → reset
+///   COMPLETO: a obra é relida do zero e o veredito honesto sai do motor atual;
+/// - `partial` LEGADO (o motor atual grava `pending` + `next_at`, nunca
+///   `partial` persistente) → volta à fila PRESERVANDO o progresso: a série
+///   retoma de onde parou em vez de re-sondar tudo.
+///
+/// `done` com acervo, `no-torrent` e outros sites não se tocam.
+#[test]
+fn reparo_mico_devolve_fantasmas_e_parciais_legados_uma_vez() {
+    let (store, _dir) = temp_store();
+    let prog = r#"{"v":1,"doneCards":["1:1"],"totalCards":2}"#;
+    for (site, key, status, releases, progress) in [
+        ("mico", "/crawl/series/tt0000001/", "done", 0, prog), // fantasma
+        ("mico", "/crawl/series/tt0000002/", "partial", 3, prog), // legado
+        ("mico", "/crawl/movie/tt0000003/", "done", 5, ""),    // acervo real
+        ("mico", "/crawl/movie/tt0000004/", "no-torrent", 0, ""),
+        ("nerdfilmes", "/filme/x/", "done", 0, prog), // outro site
+    ] {
+        store.upsert_urls(site, &[sample_url(key)]).expect("upsert");
+        store
+            .conn()
+            .execute(
+                "UPDATE crawl_url SET status = ?1, releases = ?2, progress = ?3, \
+                 tries = 2, next_at = 9, error = 'series_truncated: teto' \
+                 WHERE site = ?4 AND url_key = ?5",
+                rusqlite::params![status, releases, progress, site, key],
+            )
+            .expect("semeia dano");
+    }
+
+    assert_eq!(store.repair_mico_stuck_once().expect("reparo"), 2);
+
+    let ler = |key: &str| -> (String, i64, i64, String, String) {
+        store
+            .conn()
+            .query_row(
+                "SELECT status, tries, next_at, progress, error FROM crawl_url \
+                 WHERE site = 'mico' AND url_key = ?1",
+                [key],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .expect("linha")
+    };
+    // Fantasma: reset completo — relê do zero, sem progresso velho.
+    let (status, tries, next_at, progress, error) = ler("/crawl/series/tt0000001/");
+    assert_eq!((status.as_str(), tries, next_at), ("pending", 0, 0));
+    assert_eq!(progress, "", "fantasma é relido do zero");
+    assert_eq!(error, "");
+    // Partial legado: retoma — progresso e acervo acumulado sobrevivem.
+    let (status, tries, next_at, progress, _) = ler("/crawl/series/tt0000002/");
+    assert_eq!((status.as_str(), tries, next_at), ("pending", 0, 0));
+    assert_eq!(progress, prog, "a retomada continua de onde parou");
+    let releases: i64 = store
+        .conn()
+        .query_row(
+            "SELECT releases FROM crawl_url WHERE site = 'mico' AND url_key = ?1",
+            ["/crawl/series/tt0000002/"],
+            |r| r.get(0),
+        )
+        .expect("releases");
+    assert_eq!(releases, 3, "acervo do partial não se perde");
+    // Não-alvos intactos.
+    assert_eq!(ler("/crawl/movie/tt0000003/").0, "done");
+    assert_eq!(ler("/crawl/movie/tt0000004/").0, "no-torrent");
+    assert_eq!(
+        linha(&store, "nerdfilmes", "/filme/x/").1,
+        "done",
+        "o reparo é só do Mico"
+    );
+
+    // Idempotente: o marcador fecha a 2ª rodada, mesmo com dano "novo".
+    store
+        .conn()
+        .execute(
+            "UPDATE crawl_url SET status = 'done', releases = 0 \
+             WHERE site = 'mico' AND url_key = '/crawl/movie/tt0000004/'",
+            [],
+        )
+        .expect("refecha");
+    assert_eq!(store.repair_mico_stuck_once().expect("repete"), 0);
+    assert_eq!(ler("/crawl/movie/tt0000004/").0, "done");
+}
+
 // ─── zerar site preserva a sonda (Fase 3.5) ──────────────────────────────────
 
 /// "Zerar site" apaga a fila e o estado, mas mantém o veredito da sonda: o
