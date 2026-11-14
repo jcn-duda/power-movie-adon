@@ -74,19 +74,19 @@
         ]
       },
       {
-        "infoHash": "c1eb9d5796b7a2baa92b8bfd6a9401bb36c2bea3",
-        "title": "The Odyssey (2026) 2160p FULL HD\n📦 👤 ~9 💾 1.17 GB ⚙️ LimeTorrents",
-        "name": "📦 · 4K · LimeTorrents · 👤 ~9",
+        "infoHash": "407555e14aa398985d994fb2bd35f5305ee2c03c",
+        "title": "The Odyssey 2026 2160p TELESYNC HEVC AAC2 ENGSUBS 0 SPLiCE\n📦 👤 ~4 💾 1.17 GB ⚙️ LimeTorrents",
+        "name": "📦 · 4K CAM · LimeTorrents · 👤 ~4",
         "behaviorHints": {
-          "bingeGroup": "powerm-2160p-any"
+          "bingeGroup": "powerm-2160p-CAM"
         },
         "sources": [
-          "tracker:udp://tracker.opentrackr.org:1337/announce",
-          "tracker:udp://open.stealth.si:80/announce",
-          "tracker:udp://tracker.torrent.eu.org:451/announce",
           "tracker:udp://exodus.desync.com:6969/announce",
           "tracker:udp://open.demonii.com:1337/announce",
-          "tracker:udp://tracker.openbittorrent.com:6969/announce"
+          "tracker:udp://open.stealth.si:80/announce",
+          "tracker:udp://tracker.openbittorrent.com:6969/announce",
+          "tracker:udp://tracker.opentrackr.org:1337/announce",
+          "tracker:udp://tracker.torrent.eu.org:451/announce"
         ],
         "size": "1.17 GB"
       },

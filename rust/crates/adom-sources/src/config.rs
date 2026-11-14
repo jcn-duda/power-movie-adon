@@ -62,6 +62,9 @@ pub struct TmdbConfig {
     pub home_release_ttl_secs: u64,
     /// Kill-switch do corte doméstico (`SEARCH_PRE_HOME_RELEASE_CUT`).
     pub pre_home_release_cut: bool,
+    /// Sem data doméstica no TMDB mas com estreia em cinema, o doméstico é
+    /// estimado em cinema + N dias (`SEARCH_PRE_HOME_ESTIMATE_DAYS`; 0 desliga).
+    pub home_release_estimate_days: u64,
 }
 
 impl Default for TmdbConfig {
@@ -77,6 +80,7 @@ impl Default for TmdbConfig {
             collection_timeout_ms: 2_500,
             home_release_ttl_secs: 86_400,
             pre_home_release_cut: true,
+            home_release_estimate_days: 30,
         }
     }
 }
@@ -156,6 +160,7 @@ impl SourcesConfig {
             pre_home_release_cut: get("SEARCH_PRE_HOME_RELEASE_CUT")
                 .map(|raw| raw == "true")
                 .unwrap_or(true),
+            home_release_estimate_days: num("SEARCH_PRE_HOME_ESTIMATE_DAYS", 30),
         };
         Self {
             user_agent: DEFAULT_USER_AGENT.to_string(),

@@ -53,6 +53,25 @@ fn gravacao_de_cinema_e_item_sem_fonte_continuam() {
     assert!(keeps(indexed(None), NOW, true));
 }
 
+/// Godzilla Minus Zero (tt34384661, 2026-11-14): em cartaz, "1080p HD h264-
+/// ETHEL" global sem fonte era fake sem vídeo. Global sem marcador de cinema
+/// cai na janela; CAM/TS/HdTScr ficam; BR sem fonte fica.
+#[test]
+fn global_sem_fonte_de_cinema_cai_na_janela() {
+    let global = |title: &str| RelevanceItem {
+        title: Some(title.to_string()),
+        ..Default::default()
+    };
+    assert!(!keeps(global("The Odyssey 2026 1080p HD h264- ETHEL"), NOW, true));
+    assert!(!keeps(global("The Odyssey 2026"), NOW, true));
+    assert!(keeps(global("The Odyssey 2026 camrip 720p"), NOW, true));
+    assert!(keeps(global("The.Odyssey.2026.PL.AI.1080p.HDTS.H264-MAXX"), NOW, true));
+    assert!(keeps(global("The Odyssey (2026) HdTScr Lat"), NOW, true));
+    assert!(keeps(global("The.Odyssey.2026.D.TELECINE.1080p"), NOW, true));
+    assert!(keeps(global("The Odyssey 2026 1080p HD h264- ETHEL"), HOME_RELEASE_AT + 1, true));
+    assert!(keeps(global("The Odyssey 2026 1080p HD h264- ETHEL"), NOW, false));
+}
+
 #[test]
 fn fonte_domestica_passa_depois_do_lancamento_ou_sem_o_corte() {
     assert!(keeps(indexed(Some("WEBRip")), HOME_RELEASE_AT + 1, true));

@@ -224,6 +224,7 @@ pub fn config(base: &str) -> SourcesConfig {
             collection_timeout_ms: 1_500,
             home_release_ttl_secs: 999,
             pre_home_release_cut: true,
+            home_release_estimate_days: 30,
         },
     }
 }

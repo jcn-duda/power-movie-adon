@@ -35,7 +35,7 @@ use crate::matches_title_structure;
 use crate::matching_decisions::{
     adaptation_identity_contradicts, first_year_in, named_sequel_contradicts, year_contradicts,
 };
-use crate::pre_home_release_contradicts;
+use crate::{pre_home_release_contradicts, pre_home_unsourced_contradicts};
 use crate::release_guards::{dn_names_other_work, is_software_magnet};
 use crate::short_name_identity;
 use crate::short_name_tail_contradicts;
@@ -277,13 +277,22 @@ impl<'a> Decider<'a> {
             {
                 return Some(RelevanceRejectReason::MagnetYear);
             }
-            if pre_home_release_contradicts(
-                &[title, dn, item.media_source.as_deref().unwrap_or("")],
-                q.home_release_at,
+            let sources = [title, dn, item.media_source.as_deref().unwrap_or("")];
+            let (now, cut, margin) = (
                 self.settings.now_ms,
                 self.settings.pre_home_release_cut,
                 self.settings.pre_home_release_margin_ms,
-            ) {
+            );
+            if pre_home_release_contradicts(&sources, q.home_release_at, now, cut, margin)
+                || pre_home_unsourced_contradicts(
+                    &sources,
+                    item.is_br,
+                    q.home_release_at,
+                    now,
+                    cut,
+                    margin,
+                )
+            {
                 return Some(RelevanceRejectReason::PreHomeRelease);
             }
         }

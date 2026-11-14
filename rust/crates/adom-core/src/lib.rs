@@ -323,7 +323,9 @@ pub use js_text16::JsText;
 pub use magnet_display_name::magnet_display_name;
 pub use metric_id::{indexer_fallback_metric_key, safe_metric_id};
 pub use net_safety::is_safe_download_url;
-pub use non_feature_release::{is_home_source, is_non_feature, pre_home_release_contradicts};
+pub use non_feature_release::{
+    is_home_source, is_non_feature, pre_home_release_contradicts, pre_home_unsourced_contradicts,
+};
 pub use pack_text_totals::{
     drop_pack_text_totals, files_prove_pack, names_multiple_episodes, PackTextTotalsInput,
     PackTextTotalsOutput,

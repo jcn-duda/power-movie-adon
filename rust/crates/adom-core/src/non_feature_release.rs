@@ -13,8 +13,9 @@ use crate::br_origin::js_canon;
 
 // `/i` sem `u`: o texto sobe por `js_canon` e o `\b` é ASCII (`(?-u:\b)`).
 // Um acento não é palavra no JS, então "éweb" tem fronteira antes do W.
-const CINEMA: &str =
-    r"(?-u:\b)(?:HD[-. ]?)?(?:CAM(?:[-. ]?RIP)?|TS|TC|TELESYNC|TELECINE|PRE[-. ]?DVD)(?-u:\b)";
+// SCR/SCREENER e "HdTScr" também são cinema ("Godzilla Minus Zero (2026)
+// HdTScr Lat"); HQ é o prefixo de "HQCAM".
+const CINEMA: &str = r"(?-u:\b)(?:(?:HD|HQ)[-. ]?)?(?:CAM(?:[-. ]?RIP)?|TS(?:[-. ]?S?CR)?|TC|TELESYNC|TELECINE|PRE[-. ]?DVD|(?:DVD[-. ]?)?SCR(?:EENER)?)(?-u:\b)";
 const HOME: &str = r"(?-u:\b)(?:WEB(?:[-. ]?(?:DL|RIP))?|BLU[-. ]?RAY|BD(?:RIP|REMUX)?|BRRIP|REMUX|HDTV|DVD(?:RIP|R|5|9)?)(?-u:\b)";
 // Featurette fica de fora de propósito. O release "BluRay + Featurettes"
 // traz o filme junto do extra; marcar featurette condenaria o filme. O
@@ -78,13 +79,40 @@ pub fn pre_home_release_contradicts(
     if !cut_enabled {
         return false;
     }
-    let Some(at) = home_release_at.filter(|n| *n != 0) else {
-        return false;
-    };
-    // `homeReleaseAt - now <= margin` em i128: não estoura i64 e, nestes
-    // milissegundos, coincide com o número do JS.
-    if (at as i128) - (now as i128) <= margin_ms as i128 {
+    if !in_pre_home_window(home_release_at, now, margin_ms) {
         return false;
     }
     texts.iter().any(|t| !t.is_empty() && is_home_source(t))
+}
+
+/// `None` é null/undefined e `0` é falsy no JS (`!homeReleaseAt`).
+/// `homeReleaseAt - now <= margin` em i128: não estoura i64 e, nestes
+/// milissegundos, coincide com o número do JS.
+fn in_pre_home_window(home_release_at: Option<i64>, now: i64, margin_ms: i64) -> bool {
+    let Some(at) = home_release_at.filter(|n| *n != 0) else {
+        return false;
+    };
+    (at as i128) - (now as i128) > margin_ms as i128
+}
+
+/// Na mesma janela, release GLOBAL que não declara gravação de cinema não é o
+/// filme. Antes do doméstico só existe cópia de sala; o que se diz "1080p HD
+/// h264" sem fonte é fake (Godzilla Minus Zero, 2026-11-14: três hashes de
+/// "1080p HD h264- ETHEL" com tamanhos diferentes, ⚡ no debrid e nenhum vídeo
+/// dentro). Fonte BR fica de fora: o post BR raramente nomeia a fonte e tem o
+/// filtro de título estrito.
+pub fn pre_home_unsourced_contradicts(
+    texts: &[&str],
+    is_br: bool,
+    home_release_at: Option<i64>,
+    now: i64,
+    cut_enabled: bool,
+    margin_ms: i64,
+) -> bool {
+    if !cut_enabled || is_br || !in_pre_home_window(home_release_at, now, margin_ms) {
+        return false;
+    }
+    !texts
+        .iter()
+        .any(|t| !t.is_empty() && cinema_re().is_match(&cleaned(t)))
 }

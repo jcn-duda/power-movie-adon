@@ -5,8 +5,8 @@
 //! Nolan × o "The Odyssey (2026)" da Tubi). O CORTE em si é
 //! `adom_core::pre_home_release_contradicts` — aqui só se resolve a DATA.
 //!
-//! Fail-open: sem chave, sem filme no TMDB, sem data doméstica ou falha de rede
-//! devolve `None` e nada é cortado. Só filme (quem chama decide).
+//! Fail-open: sem chave, sem filme no TMDB, sem data doméstica nem estreia em
+//! cinema ou falha de rede devolve `None` e nada é cortado. Só filme (quem chama decide).
 //!
 //! Cache: resposta autoritativa (inclusive "não tem data/obra") vai para
 //! `home_release_ttl_secs`; falha vai para `transient_miss_ttl_secs`. O
@@ -21,6 +21,10 @@ use crate::wire::{as_integer, parse_iso_date_ms};
 
 // Tipos de lançamento do TMDB: 4 digital, 5 físico, 6 TV.
 const HOME_TYPES: [i64; 3] = [4, 5, 6];
+// Cinema: 2 limitado, 3 amplo. A pré-estreia (1) fica de fora — festival vem
+// meses antes e anteciparia a estimativa.
+const THEATRICAL_TYPES: [i64; 2] = [2, 3];
+const DAY_MS: i64 = 86_400_000;
 
 impl super::TmdbClient {
     /// 1ª data doméstica do filme (epoch ms) — `getHomeReleaseAt`.
@@ -112,13 +116,40 @@ impl super::TmdbClient {
         if !dates.ok() {
             return HomeReleaseRead::default();
         }
-        let at = dates.data.as_ref().and_then(earliest_home_release);
+        let estimate_days = self.config.home_release_estimate_days;
+        let at = dates
+            .data
+            .as_ref()
+            .and_then(|data| home_release_or_estimate(data, estimate_days));
         HomeReleaseRead { at, ok: true }
     }
 }
 
+/// Data doméstica do TMDB ou, sem ela, a estreia em cinema + `estimate_days`.
+///
+/// Filme em cartaz costuma não ter data doméstica nenhuma no TMDB (Godzilla
+/// Minus Zero, tt34384661: só tipos 2/3 em 03–06/11/2026). Sem data o corte
+/// ficava desligado e "1080p HD h264" fake passava com ⚡ sem vídeo dentro.
+/// A estimativa expira sozinha: passada a janela, o corte deixa de agir. O
+/// TTL da leitura é de um dia, então a data real do TMDB entra logo que sai.
+fn home_release_or_estimate(data: &Value, estimate_days: u64) -> Option<i64> {
+    if let Some(at) = earliest_home_release(data) {
+        return Some(at);
+    }
+    if estimate_days == 0 {
+        return None;
+    }
+    let days = i64::try_from(estimate_days).ok()?;
+    earliest_of_types(data, &THEATRICAL_TYPES)?.checked_add(days.checked_mul(DAY_MS)?)
+}
+
 /// Menor data doméstica (epoch ms) entre todos os países, ou `None`.
 fn earliest_home_release(data: &Value) -> Option<i64> {
+    earliest_of_types(data, &HOME_TYPES)
+}
+
+/// Menor data (epoch ms) dos tipos pedidos entre todos os países.
+fn earliest_of_types(data: &Value, types: &[i64]) -> Option<i64> {
     let mut min: Option<i64> = None;
     let countries = data.get("results").and_then(Value::as_array)?;
     for country in countries {
@@ -129,7 +160,7 @@ fn earliest_home_release(data: &Value) -> Option<i64> {
             let Some(kind) = entry.get("type").and_then(as_integer) else {
                 continue;
             };
-            if !HOME_TYPES.contains(&kind) {
+            if !types.contains(&kind) {
                 continue;
             }
             let Some(date) = entry.get("release_date").and_then(Value::as_str) else {
@@ -175,5 +206,32 @@ mod tests {
             { "release_dates": [{ "type": 3, "release_date": "2026-07-17" }] },
         ]});
         assert_eq!(earliest_home_release(&so_cinema), None);
+    }
+
+    /// Em cartaz sem data doméstica: cinema (tipos 2/3) + N dias. A
+    /// pré-estreia (tipo 1) não conta, a data doméstica real vence e 0 desliga.
+    #[test]
+    fn sem_data_domestica_estima_pela_estreia_em_cinema() {
+        let em_cartaz = serde_json::json!({ "results": [
+            { "iso_3166_1": "GB", "release_dates": [
+                { "type": 1, "release_date": "2026-10-14T00:00:00.000Z" },
+                { "type": 3, "release_date": "2026-11-06T00:00:00.000Z" },
+            ]},
+            { "iso_3166_1": "AR", "release_dates": [
+                { "type": 2, "release_date": "2026-11-03T00:00:00.000Z" },
+            ]},
+        ]});
+        let cinema = 1_793_664_000_000; // 2026-11-03
+        assert_eq!(home_release_or_estimate(&em_cartaz, 30), Some(cinema + 30 * DAY_MS));
+        assert_eq!(home_release_or_estimate(&em_cartaz, 0), None);
+
+        let com_digital = serde_json::json!({ "results": [
+            { "release_dates": [
+                { "type": 3, "release_date": "2026-11-03T00:00:00.000Z" },
+                { "type": 4, "release_date": "2026-11-20T00:00:00.000Z" },
+            ]},
+        ]});
+        assert_eq!(home_release_or_estimate(&com_digital, 30), earliest_home_release(&com_digital));
+        assert!(home_release_or_estimate(&serde_json::json!({ "results": [] }), 30).is_none());
     }
 }

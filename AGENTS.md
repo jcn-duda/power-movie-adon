@@ -885,7 +885,11 @@ Testes: `test/tv-code.test.ts`, `test/aftv-resolve.test.ts`,
   "Monster Hunter 2021").
 - Filme antes do 1º lançamento doméstico no TMDB (`tmdb-home-release.ts`):
   release WEB/BluRay/HDTV/DVD não é ele (The Odyssey do Nolan × o "The Odyssey
-  (2026)" da Tubi); CAM/TS passa. Trailer/teaser/trilha saiam sempre
+  (2026)" da Tubi); CAM/TS passa. Na mesma janela, release **global** sem
+  marcador de cinema (CAM/TS/TC/SCR) também sai (`pre_home_unsourced_contradicts`;
+  BR isento): "1080p HD h264" de filme em cartaz é fake sem vídeo. Sem data
+  doméstica no TMDB, a data é estimada pela estreia em cinema +
+  `SEARCH_PRE_HOME_ESTIMATE_DAYS` (30). Trailer/teaser/trilha saiam sempre
   (regra do non-feature no núcleo, `adom-core::non_feature_release`). O build
   lê a data por `peekHomeReleaseAt`.
 - Post BR pode trazer magnet de OUTRA obra: bloco fixo "CONVERTER MKV para MP4"
