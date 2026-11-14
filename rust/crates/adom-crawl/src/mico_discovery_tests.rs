@@ -1,8 +1,8 @@
-//! Testes da descoberta nativa do Mico: passo fixo, reconsulta de vazio, fim
-//! por vazias seguidas, teto, corte por obras conhecidas e marcador de
-//! varredura completa. Sem rede e sem SQLite.
+//! Testes da descoberta nativa do Mico: passo dinâmico (tamanho real da
+//! página), reconsulta de vazio, fim por vazias seguidas, teto, corte por
+//! obras conhecidas e marcador de varredura completa. Sem rede e sem SQLite.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Mutex;
 
 use crate::mico::{bucket_lastmod, synthetic_url, MicoKind};
@@ -12,30 +12,34 @@ use crate::store::url_key::crawl_url_key;
 
 use super::{discover_kind, is_full_sweep, walk_catalog, MicoCrawlConfig};
 
-/// Catálogo falso: `pages` por skip, `always` devolve uma obra nova por skip e
-/// `flaky` devolve vazio na PRIMEIRA visita daquele skip.
+/// Catálogo falso: lista PLANA fatiada por `skip` (a semântica real da API:
+/// página = fatia contígua de tamanho variável). `always` devolve uma obra
+/// nova por skip e `flaky` devolve vazio na PRIMEIRA visita daquele skip.
 #[derive(Default)]
-struct FakeApi {
-    pages: Mutex<HashMap<usize, Vec<String>>>,
+pub(super) struct FakeApi {
+    catalog: Vec<String>,
     flaky: Mutex<HashSet<usize>>,
     calls: Mutex<Vec<usize>>,
     always: bool,
+    /// Teto de metas por página (0 = sem teto); a API real tem página variável.
+    page_size: usize,
 }
 
 impl FakeApi {
-    fn new(pages: &[(usize, &[&str])]) -> Self {
-        let mut map = HashMap::new();
-        for (skip, ids) in pages {
-            map.insert(*skip, ids.iter().map(|s| s.to_string()).collect());
-        }
+    pub(super) fn new(ids: &[&str]) -> Self {
         Self {
-            pages: Mutex::new(map),
+            catalog: ids.iter().map(|s| s.to_string()).collect(),
             ..Default::default()
         }
     }
 
-    fn always(mut self) -> Self {
+    pub(super) fn always(mut self) -> Self {
         self.always = true;
+        self
+    }
+
+    fn page_size(mut self, n: usize) -> Self {
+        self.page_size = n;
         self
     }
 
@@ -44,7 +48,7 @@ impl FakeApi {
         self
     }
 
-    fn calls(&self) -> Vec<usize> {
+    pub(super) fn calls(&self) -> Vec<usize> {
         self.calls.lock().unwrap().clone()
     }
 }
@@ -67,12 +71,12 @@ impl MicoApi for FakeApi {
             let ids = if self.always {
                 vec![format!("tt{}", 1_000_000 + skip)]
             } else {
-                self.pages
-                    .lock()
-                    .unwrap()
-                    .get(&skip)
-                    .cloned()
-                    .unwrap_or_default()
+                let fatia: Vec<String> = self.catalog.iter().skip(skip).cloned().collect();
+                if self.page_size > 0 {
+                    fatia.into_iter().take(self.page_size).collect()
+                } else {
+                    fatia
+                }
             };
             Ok(CatalogPage {
                 count: ids.len(),
@@ -93,38 +97,22 @@ impl MicoApi for FakeApi {
     }
 }
 
-fn cfg() -> MicoCrawlConfig {
+pub(super) fn cfg() -> MicoCrawlConfig {
     MicoCrawlConfig {
         base_url: "https://mico.teste".to_string(),
         ..Default::default()
     }
 }
 
-fn sem_abortar() -> impl Fn() -> bool + Sync {
+pub(super) fn sem_abortar() -> impl Fn() -> bool + Sync {
     || false
 }
 
 #[tokio::test]
-async fn passo_fixo_25_ate_1000_e_50_depois() {
-    let api = FakeApi::default().always();
-    let cfg = MicoCrawlConfig {
-        max_pages: 42,
-        empty_retries: 0,
-        end_after_empties: 99,
-        known_pages_to_stop: 99,
-        ..cfg()
-    };
-    let walk = walk_catalog(&api, &cfg, MicoKind::Movie, None, &sem_abortar()).await;
-    let calls = api.calls();
-    assert_eq!(walk.pages, 42);
-    assert_eq!(&calls[..3], &[0, 25, 50], "passo fixo de 25 até 1000");
-    assert_eq!(calls[40], 1_000, "a 41ª página começa em 1000");
-    assert_eq!(calls[41], 1_050, "depois de 1000 o passo é 50");
-}
-
-#[tokio::test]
 async fn pagina_vazia_intermitente_e_reconsultada_no_mesmo_skip() {
-    let api = FakeApi::default().always().flaky(25);
+    let api = FakeApi::new(&["tt1000001", "tt1000002", "tt1000003"])
+        .page_size(1)
+        .flaky(1);
     let cfg = MicoCrawlConfig {
         max_pages: 4,
         empty_retries: 2,
@@ -135,7 +123,7 @@ async fn pagina_vazia_intermitente_e_reconsultada_no_mesmo_skip() {
     let walk = walk_catalog(&api, &cfg, MicoKind::Movie, None, &sem_abortar()).await;
     assert_eq!(
         api.calls(),
-        vec![0, 25, 25, 50],
+        vec![0, 1, 1, 2],
         "vazio intermitente reconsulta o MESMO skip"
     );
     assert_eq!(walk.pages, 4, "a reconsulta conta no teto");
@@ -145,7 +133,7 @@ async fn pagina_vazia_intermitente_e_reconsultada_no_mesmo_skip() {
 
 #[tokio::test]
 async fn fim_so_depois_de_vazias_seguidas() {
-    let api = FakeApi::new(&[(0, &["tt1000001"]), (25, &["tt1000002"])]);
+    let api = FakeApi::new(&["tt1000001", "tt1000002"]);
     let cfg = MicoCrawlConfig {
         max_pages: 50,
         empty_retries: 0,
@@ -154,7 +142,7 @@ async fn fim_so_depois_de_vazias_seguidas() {
         ..cfg()
     };
     let walk = walk_catalog(&api, &cfg, MicoKind::Movie, None, &sem_abortar()).await;
-    assert_eq!(api.calls(), vec![0, 25, 50, 75]);
+    assert_eq!(api.calls(), vec![0, 2, 4]);
     assert!(walk.saw_end);
     assert_eq!(walk.ids, vec!["tt1000001", "tt1000002"]);
 }
@@ -177,7 +165,7 @@ async fn teto_de_paginas_trunca_sem_marcar_fim() {
 
 #[tokio::test]
 async fn incremental_para_em_paginas_conhecidas_e_sai_complete() {
-    let api = FakeApi::new(&[(0, &["tt1000001"]), (25, &["tt1000002"])]);
+    let api = FakeApi::new(&["tt1000001", "tt1000002"]);
     let now = 1_800_000_000_000i64;
     let mut known = HashSet::new();
     for tt in ["tt1000001", "tt1000002"] {
@@ -202,7 +190,7 @@ async fn incremental_para_em_paginas_conhecidas_e_sai_complete() {
 
 #[tokio::test]
 async fn varredura_completa_marca_so_quando_ve_o_fim() {
-    let api = FakeApi::new(&[(0, &["tt1000001"])]);
+    let api = FakeApi::new(&["tt1000001"]);
     let cfg = MicoCrawlConfig {
         max_pages: 50,
         empty_retries: 0,
@@ -243,7 +231,7 @@ async fn varredura_completa_marca_so_quando_ve_o_fim() {
 
 #[tokio::test]
 async fn lastmod_sintetico_usa_o_balde_do_tipo() {
-    let api = FakeApi::new(&[(0, &["tt1000001", "tt1000002"])]);
+    let api = FakeApi::new(&["tt1000001", "tt1000002"]);
     let now = 1_790_899_200_000i64; // base dos testes de `bucket_lastmod`
     let cfg = MicoCrawlConfig {
         max_pages: 1,

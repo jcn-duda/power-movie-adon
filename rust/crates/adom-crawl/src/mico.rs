@@ -12,7 +12,10 @@ pub const SERIES_CATALOG_ID: &str = "MicoSeries";
 /// Ponto de transição do passo de skip (abaixo usa 25, acima 50).
 pub const STRIDE_SWITCH: u32 = 1000;
 
-/// Passo fixo do `skip`: 25 até 1000, 50 depois.
+/// Passo fixo HISTÓRICO do `skip` (25 até 1000, 50 depois). A descoberta não
+/// usa mais: avançava 3–4× sobreposto e abria lacuna em página curta; hoje o
+/// passo é o tamanho real da página (`mico_discovery::walk_catalog`). Fica
+/// como vocabulário do golden `crawl-parsers` (paridade com o TS do `esm`).
 pub fn stride_at(skip: u32) -> u32 {
     if skip < STRIDE_SWITCH {
         25

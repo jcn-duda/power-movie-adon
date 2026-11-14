@@ -1,8 +1,11 @@
 //! Descoberta nativa do Mico no motor Rust (Fase 6).
 //!
 //! Porta fiel de `src/providers/crawl-sites/mico-shared.ts`:
-//! - paginação por `skip` com **passo FIXO** (`stride_at`: 25 até 1000, 50
-//!   depois) — `meta.length` NÃO mede o índice bruto do catálogo;
+//! - paginação por `skip` com **passo DINÂMICO** (`skip += tamanho real da
+//!   página`): o passo fixo 25/50 media 70–75% de sobreposição (3–4×
+//!   requisições) e abria lacuna quando a página vinha menor que o passo
+//!   (páginas de 14 metas já foram medidas). O catálogo é mais-novos-primeiro
+//!   e volátil no topo: a sobreposição residual é deduplicada pelo `seen`;
 //! - página vazia é INTERMITENTE na API: reconsulta até
 //!   `empty_retries` vezes antes de contá-la como vazia;
 //! - fim só depois de `end_after_empties` páginas vazias SEGUIDAS (já
@@ -19,7 +22,7 @@
 
 use std::collections::HashSet;
 
-use crate::mico::{bucket_lastmod, stride_at, synthetic_url, MicoKind};
+use crate::mico::{bucket_lastmod, synthetic_url, MicoKind};
 use crate::mico_net::api::MicoApi;
 use crate::mico_net::types::CatalogType;
 use crate::store::url_key::crawl_url_key;
@@ -151,7 +154,7 @@ impl CatalogWalk {
     }
 }
 
-/// Caminha o catálogo de UM tipo com o passo FIXO do `stride_at`.
+/// Caminha o catálogo de UM tipo com passo DINÂMICO (tamanho real da página).
 ///
 /// `known` é o conjunto de `url_key` já na fila: quando `Some`, uma página
 /// inteira de obras conhecidas incrementa `known_run`; ao atingir
@@ -169,6 +172,9 @@ pub async fn walk_catalog(
     let mut skip: u32 = 0;
     let mut empty_run: u32 = 0;
     let mut known_run: u32 = 0;
+    // Passo do avanço: tamanho da última página viva; em página vazia/falha
+    // ele mantém o caminho andando (a sonda de fim não pode orbitar o skip).
+    let mut stride: u32 = 25;
 
     while walk.pages < cfg.max_pages {
         if is_aborted() {
@@ -206,7 +212,7 @@ pub async fn walk_catalog(
         }
 
         if !failed {
-            match page {
+            match &page {
                 Some(catalog) => {
                     empty_run = 0;
                     let ids: Vec<String> = {
@@ -245,8 +251,18 @@ pub async fn walk_catalog(
             }
         }
 
-        // PASSO FIXO: o índice bruto do catálogo, nunca `metas.length`.
-        skip = skip.saturating_add(stride_at(skip));
+        // PASSO DINÂMICO: página viva avança pelo tamanho BRUTO dela
+        // (`count`, não o nº de obras novas — página repetida não pode
+        // orbitar o skip); vazia/falha avança pelo último tamanho conhecido.
+        // Medido (2026-11-14): o passo fixo 25/50 sobrepunha 70–75% e podia
+        // pular obras quando a página vinha menor que o passo.
+        match page {
+            Some(catalog) => {
+                stride = catalog.count as u32;
+                skip = skip.saturating_add(stride);
+            }
+            None => skip = skip.saturating_add(stride),
+        }
     }
     walk
 }
@@ -334,3 +350,7 @@ pub async fn discover_kind(
 #[cfg(test)]
 #[path = "mico_discovery_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "mico_discovery_stride_tests.rs"]
+mod stride_tests;
