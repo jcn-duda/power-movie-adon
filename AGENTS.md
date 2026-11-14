@@ -616,7 +616,9 @@ o resto do código não conhece serviço específico. Resolução só no **play*
   conta). Hit de `raw` não pinta o card de status.
 - **Addon responde do próprio índice** quando ele cobre a obra (Jackett vira
   alimentador assíncrono); cobertura é por pool (BR dublado → dublado global →
-  swarm), nunca contagem pura. **Colhedor nativo** e indexers *index-only*
+  swarm), nunca contagem pura. A foto do índice leva 📦 e `👤 ~N` (divergência
+  proposital do TS desde 2026-11-14) até o vivo confirmar o hash: na 1ª resposta
+  o BR vivo tira o selo (`unmark_live_snapshots`) e o tail, na promoção. **Colhedor nativo** e indexers *index-only*
   (redetorrent, apache, hdr, 1337x, kickasstorrents-ws) ficam fora do caminho da resposta. O
   colhedor nativo NÃO pula os cards que o raspador já cobre (o skip era do
   colhedor TS, `crawl-coverage.ts`, apagado; a régua segue no `esm` se um dia

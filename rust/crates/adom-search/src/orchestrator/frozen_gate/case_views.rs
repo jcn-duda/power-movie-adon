@@ -46,7 +46,7 @@ impl FrozenCase {
     /// wire-shaped (`IndexedReleaseWire`/`InstantWork`/`InventoryItem`) e não
     /// carregam a prova POR ITEM que o build do Node já aplicou
     /// (`provenQuality`/`provenAudio`/`provenName`/`mediaSource`). Fora da via
-    /// instantânea o `fast_path` neutraliza `fromSnapshot`, como em produção;
+    /// instantânea o índice entra como foto (`fromSnapshot`), como em produção;
     /// `None` = nem instantânea nem índice coberto (a coleta ao vivo segue).
     pub(super) fn fast_path_lote(&self) -> Option<(bool, Vec<RawItem>)> {
         let batch = self.index.as_ref()?;
@@ -54,9 +54,11 @@ impl FrozenCase {
             return None;
         }
         let mut items: Vec<RawItem> = batch.items.iter().map(raw_item_from_value).collect();
+        // A captura do TS veio sem marca na via do índice; em produção a foto
+        // do índice leva o selo (`native_fast_path`), e o replay acompanha.
         if !batch.instant {
-            for item in &mut items {
-                item.from_snapshot = false;
+            for item in items.iter_mut().filter(|item| !item.from_account) {
+                item.from_snapshot = true;
             }
         }
         Some((batch.instant, items))

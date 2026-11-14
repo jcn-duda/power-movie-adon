@@ -268,7 +268,7 @@ async fn indice_coberto_responde_com_a_marca_da_foto() {
 }
 
 #[tokio::test]
-async fn fast_path_do_indice_limpa_o_selo_da_foto() {
+async fn fast_path_do_indice_leva_o_selo_da_foto() {
     let indexed = vec![release(
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         true,
@@ -286,7 +286,9 @@ async fn fast_path_do_indice_limpa_o_selo_da_foto() {
         .expect("índice cobre");
     assert!(!fast.instant);
     assert_eq!(fast.items.len(), 1);
-    assert!(!fast.items[0].from_snapshot, "via do índice não leva 📦");
+    // Desde 2026-11-14 a foto do índice leva 📦 até o vivo confirmar o hash.
+    assert!(fast.items[0].from_snapshot, "via do índice leva 📦");
+    assert!(!fast.items[0].from_fallback, "foto não é reserva bloqueada");
 }
 
 #[tokio::test]

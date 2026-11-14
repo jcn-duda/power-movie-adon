@@ -111,6 +111,22 @@ pub(super) fn merge_fast_with_live(
     out
 }
 
+/// Primeira resposta (índice + parte viva já colhida): a foto cujo hash o vivo
+/// entregou perde o selo. O dedupe do build mantém a primeira ocorrência (a
+/// foto), e com a marca ela exibiria 📦 num hash que acabou de chegar vivo.
+pub(super) fn unmark_live_snapshots(fast: &mut [RawItem], live: &[RawItem]) {
+    let live_hashes: BTreeSet<String> = live
+        .iter()
+        .map(RawItem::bank_hash)
+        .filter(|h| !h.is_empty())
+        .collect();
+    for item in fast.iter_mut().filter(|item| item.from_snapshot) {
+        if live_hashes.contains(&item.bank_hash()) {
+            item.from_snapshot = false;
+        }
+    }
+}
+
 /// Lista completa de uma janela de coleta: o `completion` devolve o balde
 /// INTEIRO (o que chegou no prazo + o tardio); sem ele (ou se a task caiu),
 /// vale o que a janela já tinha.

@@ -68,17 +68,12 @@ impl Orchestrator {
             });
         }
         if outcome.index_covered {
-            // Via do índice NÃO-instantânea: o `idxReleasesToRaw` do TS não põe
-            // marca nenhuma, então `fromSnapshot` é NEUTRALIZADO.
-            let mut items: Vec<RawItem> = outcome
-                .index_items
-                .iter()
-                .cloned()
-                .map(|mut item| {
-                    item.from_snapshot = false;
-                    item
-                })
-                .collect();
+            // Via do índice NÃO-instantânea: a foto do acervo leva o 📦 e o
+            // `👤 ~N` até a coleta ao vivo confirmar o hash (`merge_fast_with_live`
+            // tira o selo na promoção). Diverge do `idxReleasesToRaw` do TS de
+            // propósito (2026-11-14): sem a marca, filme antigo saía do acervo
+            // sem nenhum sinal e os seeders salvos pareciam medição viva.
+            let mut items: Vec<RawItem> = outcome.index_items.clone();
             items.extend(outcome.account_items.iter().cloned());
             return Some(super::fast_path::FastPath {
                 instant: false,

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::latest_writer::LatestWriter;
 
-use super::fast_path::{full_window, merge_fast_with_live};
+use super::fast_path::{full_window, merge_fast_with_live, unmark_live_snapshots};
 use super::finish::{cache_max_age_for_finish, SearchInput};
 use super::live_state::{live_state_snapshot, merge_into_shared, merge_states, shared_live_state};
 use super::meta::SearchMeta;
@@ -84,6 +84,7 @@ impl Orchestrator {
                         let (live_items, live_partial, live_completion, live_failed, live_state) =
                             self.collect(&input, &meta).await;
                         let mut merged = fast.items.clone();
+                        unmark_live_snapshots(&mut merged, &live_items);
                         merged.extend(live_items.iter().cloned());
                         let fast_for_rescue = fast.items;
                         let tail_live = live_state.clone();
@@ -110,6 +111,7 @@ impl Orchestrator {
                         // dessa coleta é o que decide a reserva dos BRs falhos.
                         let first_live = live_state_snapshot(&br_state);
                         let mut head = fast.items.clone();
+                        unmark_live_snapshots(&mut head, &br_items);
                         head.extend(br_items.iter().cloned());
                         let this = self.clone();
                         let input_tail = self.tail_input(&input);

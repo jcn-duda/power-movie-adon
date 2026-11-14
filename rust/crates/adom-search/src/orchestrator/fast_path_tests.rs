@@ -233,3 +233,17 @@ fn hash_do_banco_cai_para_magnet_quando_info_hash_e_invalido() {
     let out = merge_fast_with_live(vec![reserva_suja], vec![vivo], false, Some(&state));
     assert_eq!(titles(&out), ["vivo"]);
 }
+
+/// Primeira resposta da via do índice: a foto que o BR ao vivo já entregou
+/// (hash em outra caixa) perde o selo; a que só o acervo tem segue 📦.
+#[test]
+fn primeira_resposta_tira_o_selo_da_foto_que_chegou_viva() {
+    let mut vista = item("foto vista", HASH_A_UPPER, "comando");
+    vista.from_snapshot = true;
+    let mut so_acervo = item("foto só do acervo", HASH_B, "bludv");
+    so_acervo.from_snapshot = true;
+    let mut head = vec![vista, so_acervo];
+    unmark_live_snapshots(&mut head, &[item("ao vivo", HASH_A, "comando")]);
+    assert!(!head[0].from_snapshot, "o vivo provou o hash");
+    assert!(head[1].from_snapshot, "sem prova viva o selo fica");
+}
