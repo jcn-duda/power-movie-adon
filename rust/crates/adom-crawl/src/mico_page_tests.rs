@@ -266,3 +266,36 @@ async fn roteador_manda_own_pace_para_a_engine_do_mico() {
         outro => panic!("esperava a engine HTML, veio {outro:?}"),
     }
 }
+
+/// Fantasma: série com progresso completo mas ZERO releases acumuladas e
+/// nenhum stream novo não pode fechar `done` — é `no-torrent` (mesma régua
+/// do parser Nerd: `done` sem release é acervo fantasma).
+#[tokio::test]
+async fn serie_fantasma_retomada_sem_acervo_e_no_torrent() {
+    let api = Arc::new(FakeApi {
+        meta: Some(meta_serie()),
+        ..Default::default() // nenhum stream: todos os episódios vazios
+    });
+    let mut row = row("https://mico.teste/crawl/series/tt1234567/", "tv_show");
+    row.progress = r#"{"v":1,"doneCards":["1:1","1:2","1:3"],"totalCards":3}"#.to_string();
+    row.releases = 0;
+    let out = work(engine(api, 40).execute(&row).await);
+    assert_eq!(out.status, CrawlResultStatus::NoTorrent);
+    assert!(out.groups.is_empty());
+}
+
+/// Retomada legítima: a série JÁ tem acervo (releases > 0 de passes
+/// anteriores); o passe final sem novidade mantém `done` e o progresso.
+#[tokio::test]
+async fn serie_retomada_com_acervo_anterior_mantem_done() {
+    let api = Arc::new(FakeApi {
+        meta: Some(meta_serie()),
+        ..Default::default()
+    });
+    let mut row = row("https://mico.teste/crawl/series/tt1234567/", "tv_show");
+    row.progress = r#"{"v":1,"doneCards":["1:1","1:2","1:3"],"totalCards":3}"#.to_string();
+    row.releases = 5;
+    let out = work(engine(api, 40).execute(&row).await);
+    assert_eq!(out.status, CrawlResultStatus::Done);
+    assert!(out.progress.is_some(), "progresso preservado na retomada");
+}

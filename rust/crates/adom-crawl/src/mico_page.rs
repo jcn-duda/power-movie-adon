@@ -177,9 +177,12 @@ impl MicoPageEngine {
                 cost,
             )));
         }
-        // Sem release no passe FINAL: com progresso anterior a série já foi
-        // colhida (`conclusão por retomada`); sem resume, é `no-torrent`.
-        if !resume.is_empty() {
+        // Sem release no passe FINAL: com progresso anterior E acervo
+        // acumulado a série já foi colhida (`conclusão por retomada`); sem
+        // resume, é `no-torrent`. Progresso completo com ZERO releases é o
+        // fantasma `done/releases=0` (todos os passes vazios): o veredito
+        // honesto é `no-torrent`, mesma régua do parser Nerd.
+        if !resume.is_empty() && row.releases > 0 {
             return PageOutcome::Work(Box::new(series_result(
                 row,
                 tt,
