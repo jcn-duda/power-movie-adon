@@ -249,25 +249,14 @@ pub fn build_stream_list(
     if sem_hash > 0 {
         out.count("no-hash", sem_hash);
     }
+    // 6c. `idx-miss`: hash provado fora deste episódio sai antes da checagem.
+    drop_index_missing(&mut mapped, ctx, &mut out);
     // Lista de arquivos do build (memo `fsz`): mede o episódio no pack para o
     // limite de tamanho (passo 6) e para o 💾 (passo 7).
     let files_build = ctx.files_at_build.as_ref().unwrap_or(&ctx.files_by_hash);
     let max_size_gb = episode_size_limit(&mut mapped, ctx, opts, files_build, &mut out);
     let pool_size = opts.max_results * opts.candidate_pool_factor;
-    // CAM que o `excludeCam` vai esconder: com a lista vazia, o aviso diz que
-    // só há cópia de cinema (filme em cartaz) em vez de prometer "reabra".
-    // Conta por hash: o pool ainda não passou pelo dedupe (o mesmo CAM vem de
-    // vários indexers e consultas).
-    let cam_hidden = if opts.exclude_cam {
-        mapped
-            .iter()
-            .filter(|s| adom_core::is_cam_stream(s))
-            .filter_map(|s| s.info_hash.as_deref().map(str::to_ascii_lowercase))
-            .collect::<BTreeSet<_>>()
-            .len()
-    } else {
-        0
-    };
+    let cam_hidden = if opts.exclude_cam { cam_hashes(&mapped) } else { 0 };
     let sort = sort_and_limit(&SortInput {
         streams: mapped,
         options: SortOptions {

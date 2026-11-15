@@ -169,6 +169,7 @@ impl Orchestrator {
         // A lista de arquivos vem por hash da fonte nativa; o mapa do replay
         // (já no contexto) continua vencendo. Antes disto o `💾` de pack nunca saía.
         merge_file_sizes(self.file_sizes.as_deref(), items, &mut ctx);
+        ctx.missing_hashes = self.index_missing(meta, items, input.now_ms);
         // Título sem resolução ganha a do arquivo que o play tocaria (mesma
         // lista de arquivos do 💾); sem isso o item saía sem chip de qualidade.
         // Prova de arquivo do índice ANTES da resolução pelo nome (ordem do TS:
@@ -235,6 +236,37 @@ impl Orchestrator {
         value
     }
 
+    /// `idx-miss` do lote: só série com S/E e obra; sem índice, vazio (fail-open).
+    fn index_missing(&self, meta: &SearchMeta, items: &[RawItem], now_ms: i64) -> HashSet<String> {
+        let (Some(index), Some(season), Some(episode)) =
+            (self.index.as_ref(), meta.season, meta.episode)
+        else {
+            return HashSet::new();
+        };
+        if meta.imdb_id.is_empty() {
+            return HashSet::new();
+        }
+        let hashes: Vec<String> = items
+            .iter()
+            .map(RawItem::hash)
+            .filter(|hash| !hash.is_empty())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        if hashes.is_empty() {
+            return HashSet::new();
+        }
+        let missing = index.missing_hashes(&meta.imdb_id, season, episode, &hashes, now_ms);
+        if !missing.is_empty() {
+            eprintln!(
+                "[search] idx-miss: {} hash(es) provado(s) fora de S{season}E{episode} saem da lista ({})",
+                missing.len(),
+                meta.imdb_id
+            );
+        }
+        missing
+    }
+
     pub(super) fn build_context(&self, input: &SearchInput, meta: &SearchMeta) -> BuildContext {
         let service = str_of(&input.options, "debridService");
         let api_key = str_of(&input.options, "debridApiKey");
@@ -288,6 +320,8 @@ impl Orchestrator {
                 .as_ref()
                 .map(|totals| totals.as_ref().clone()),
             broken_hashes,
+            // Depende do lote: quem tem os itens (`finish`) preenche.
+            missing_hashes: HashSet::new(),
         }
     }
 

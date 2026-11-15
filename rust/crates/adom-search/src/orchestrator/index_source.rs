@@ -86,6 +86,20 @@ pub trait ReleaseIndexSource: Send + Sync {
         now_ms: i64,
         bank: Option<BankLookup<'_>>,
     ) -> Result<usize, String>;
+
+    /// `releaseIndex.isMissing` em lote: dos `hashes`, os que o play ou a
+    /// auditoria já provaram NÃO servir este episódio (`miss`/`missS` vivos).
+    /// Só série com S/E. Default vazio: stub de teste e colhedor não cortam.
+    fn missing_hashes(
+        &self,
+        _imdb: &str,
+        _season: i64,
+        _episode: i64,
+        _hashes: &[String],
+        _now_ms: i64,
+    ) -> std::collections::HashSet<String> {
+        std::collections::HashSet::new()
+    }
 }
 
 /// Banco de magnets vivo (`magnets.db`). Leitura em lote, escrita do veredito

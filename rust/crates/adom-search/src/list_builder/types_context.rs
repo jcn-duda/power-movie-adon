@@ -67,6 +67,10 @@ pub struct BuildContext {
     /// de magnets, lidos do `cache.db` pelo gateway). Vazio = sem fonte: o build
     /// não poda nada além do `broken` que vem no item.
     pub broken_hashes: HashSet<String>,
+    /// Hashes (minúsculos) que já provaram NÃO servir este episódio
+    /// (`idx:v14:miss|missS`, gravados pelo play e pela auditoria). Saem antes
+    /// da checagem, como o `idx-miss` do `pruneKnownBroken` do TS.
+    pub missing_hashes: HashSet<String>,
     /// Relógio da build (ms desde a época).
     pub now_ms: i64,
 }

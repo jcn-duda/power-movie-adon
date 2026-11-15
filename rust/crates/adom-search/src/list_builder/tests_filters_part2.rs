@@ -100,6 +100,34 @@ fn hash_quebrado_na_conta_sai_antes_da_checagem() {
     );
 }
 
+/// `idx-miss`: hash que o play/auditoria provou fora deste episódio sai antes
+/// da checagem (o pack da S1 no S3E1 de True Detective, 2026-11-15).
+#[test]
+fn idx_miss_corta_o_hash_provado_fora_do_episodio() {
+    let mut ctx = base_ctx();
+    ctx.season = Some(3);
+    ctx.episode = Some(1);
+    let fora = "ee05000000000000000000000000000000000005";
+    let certo = "ff06000000000000000000000000000000000006";
+    ctx.missing_hashes = [fora.to_string()].into_iter().collect();
+    let out = build(
+        vec![
+            release("Filme.Teste.S03E01.1080p.WEB-DL", &fora.to_uppercase()),
+            release("Filme.Teste.S03E01.720p.WEB-DL", certo),
+        ],
+        &ctx,
+        &BuildOptions::default(),
+        &mut StubDebrid::none(),
+    );
+    let hashes: Vec<_> = out
+        .streams
+        .iter()
+        .filter_map(|s| s.item.info_hash.as_deref())
+        .collect();
+    assert_eq!(hashes, [certo]);
+    assert_eq!(out.funnel.get("idx-miss"), Some(&1));
+}
+
 /// F4.4a — a MESMA poda, agora com a evidência lida do `cache.db` pela fonte
 /// injetada: com coleta/índice nativos o item não passa pela rota de evidência
 /// do Node, então o `broken` não vem no item.

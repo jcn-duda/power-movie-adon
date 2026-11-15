@@ -78,6 +78,22 @@ impl ReleaseIndexSource for NativeReleaseIndex {
         ReleaseIndexStore::is_partial(&self.0, imdb, work_target(season, episode), now_ms)
     }
 
+    fn missing_hashes(
+        &self,
+        imdb: &str,
+        season: i64,
+        episode: i64,
+        hashes: &[String],
+        now_ms: i64,
+    ) -> std::collections::HashSet<String> {
+        let target = work_target(Some(season), Some(episode));
+        hashes
+            .iter()
+            .map(|hash| hash.to_ascii_lowercase())
+            .filter(|hash| ReleaseIndexStore::is_missing(&self.0, imdb, target, hash, now_ms))
+            .collect()
+    }
+
     fn record(
         &self,
         entry: &ReleaseEntry,
@@ -236,5 +252,34 @@ mod tests {
             !outro.is_partial("tt0111161", None, None, NOW),
             "source/título não viram suplementar"
         );
+    }
+
+    /// True Detective (2026-11-15): a auditoria gravou `missS` da S3 para o
+    /// pack da S1 e ele seguia no S3E1 — a busca nativa nunca lia o `miss`.
+    #[test]
+    fn missing_hashes_le_miss_do_episodio_e_da_temporada() {
+        let index = NativeReleaseIndex::memory();
+        let ep = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let temporada = "cccccccccccccccccccccccccccccccccccccccc";
+        let alvo = WorkTarget {
+            season: Some(3),
+            episode: Some(1),
+        };
+        index.0.mark_missing("tt2356777", alvo, ep, NOW).expect("miss");
+        index
+            .0
+            .mark_missing_season("tt2356777", 3, temporada, NOW)
+            .expect("missS");
+        let hashes = [ep.to_uppercase(), temporada.into(), HASH.into()];
+        let s3e1 = index.missing_hashes("tt2356777", 3, 1, &hashes, NOW);
+        assert_eq!(
+            s3e1,
+            [ep.to_string(), temporada.to_string()].into_iter().collect()
+        );
+        // Outro episódio da S3: só a marca da temporada vale.
+        let s3e2 = index.missing_hashes("tt2356777", 3, 2, &hashes, NOW);
+        assert_eq!(s3e2, [temporada.to_string()].into_iter().collect());
+        // Outra temporada não herda nada.
+        assert!(index.missing_hashes("tt2356777", 1, 1, &hashes, NOW).is_empty());
     }
 }

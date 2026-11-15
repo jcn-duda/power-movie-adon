@@ -211,6 +211,42 @@ pub fn stream_to_ref(stream: &RankingStream, season: Option<i64>) -> StreamRef {
     }
 }
 
+/// Prova fina do índice (`idx-miss` do `pruneKnownBroken` do TS): hash que o
+/// play ou a auditoria já provaram NÃO servir este episódio sai antes da
+/// checagem. Sem isto o pack de outra temporada voltava à lista a cada busca.
+pub fn drop_index_missing(
+    mapped: &mut Vec<RankingStream>,
+    ctx: &BuildContext,
+    out: &mut super::types::BuiltList,
+) {
+    if ctx.missing_hashes.is_empty() {
+        return;
+    }
+    let before = mapped.len();
+    mapped.retain(|stream| {
+        !stream
+            .info_hash
+            .as_deref()
+            .map(str::to_ascii_lowercase)
+            .is_some_and(|hash| ctx.missing_hashes.contains(&hash))
+    });
+    if before != mapped.len() {
+        out.count("idx-miss", before - mapped.len());
+    }
+}
+
+/// CAM que o `excludeCam` vai esconder, por hash (o pool ainda não passou
+/// pelo dedupe): com a lista vazia, o aviso diz que só há cópia de cinema em
+/// vez de prometer "reabra".
+pub fn cam_hashes(mapped: &[RankingStream]) -> usize {
+    mapped
+        .iter()
+        .filter(|s| adom_core::is_cam_stream(s))
+        .filter_map(|s| s.info_hash.as_deref().map(str::to_ascii_lowercase))
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+}
+
 /// Texto do aviso de lista vazia — os mesmos estados do TS, sem os que exigem
 /// estado de fora (probe/autofetch chegam na fatia de integração). `None` =
 /// filme sem candidato NÃO promete "reabra" (mentiria).
