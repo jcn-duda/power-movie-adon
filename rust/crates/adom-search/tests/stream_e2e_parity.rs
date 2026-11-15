@@ -74,6 +74,10 @@ struct ManifestCase {
     status: u16,
     #[serde(rename = "cacheMaxAge")]
     cache_max_age: u32,
+    /// Instante da captura (ISO): o relógio do replay, para as janelas de data
+    /// não fecharem sozinhas com o passar dos dias.
+    #[serde(rename = "capturedAt", default)]
+    captured_at: Option<String>,
     files: ManifestFiles,
 }
 
@@ -133,6 +137,7 @@ fn load_corpus() -> (PathBuf, Manifest, Vec<LoadedCase>) {
                 dir: meta.dir.clone(),
                 status: meta.status,
                 cache_max_age: meta.cache_max_age,
+                captured_at: meta.captured_at.clone(),
                 files: ManifestFiles {
                     request: meta.files.request.clone(),
                     response: meta.files.response.clone(),

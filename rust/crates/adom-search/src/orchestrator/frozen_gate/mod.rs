@@ -162,7 +162,23 @@ pub async fn run_case_with_expected(
     origin: &str,
     encoded: &str,
 ) -> Result<(), String> {
-    let got = replay_case_value(dir, origin, encoded).await?;
+    run_case_with_expected_at(dir, expected, origin, encoded, None).await
+}
+
+/// Igual a [`run_case_with_expected`], com o relógio CONGELADO em `now_ms`.
+///
+/// O corpus e2e é uma captura antiga: com o relógio de parede, toda janela de
+/// data (estreia doméstica, pré-air) fecha sozinha com o passar dos dias e o
+/// caso quebra sem mudança de código (The Odyssey, 2026-11-15: a janela
+/// pré-doméstico venceu e o "2160p FULL HD" voltou). A sombra segue com `None`.
+pub async fn run_case_with_expected_at(
+    dir: &Path,
+    expected: &Value,
+    origin: &str,
+    encoded: &str,
+    now_ms: Option<i64>,
+) -> Result<(), String> {
+    let got = replay_case_value_at(dir, origin, encoded, now_ms).await?;
     match compare_streams(&got, expected, origin, encoded) {
         Ok(()) => Ok(()),
         Err(first) => {
@@ -177,7 +193,7 @@ pub async fn run_case_with_expected(
                 "" => None,
                 segment => Some(segment.to_string()),
             };
-            let without = replay(frozen, origin, encoded.clone(), None).await?;
+            let without = replay(frozen, origin, encoded.clone(), now_ms).await?;
             if compare_streams(&without, expected, origin, encoded.as_deref().unwrap_or("")).is_ok()
             {
                 Ok(())
@@ -191,10 +207,19 @@ pub async fn run_case_with_expected(
 /// Diagnóstico (host): devolve o corpo do replay da MESMA montagem da sombra.
 /// Usado pelo harness `examples/shadow_replay` para classificar divergências.
 pub async fn replay_case_value(dir: &Path, origin: &str, encoded: &str) -> Result<Value, String> {
+    replay_case_value_at(dir, origin, encoded, None).await
+}
+
+async fn replay_case_value_at(
+    dir: &Path,
+    origin: &str,
+    encoded: &str,
+    now_ms: Option<i64>,
+) -> Result<Value, String> {
     let frozen = FrozenCase::load(dir)?;
     let encoded = match encoded.trim() {
         "" => None,
         segment => Some(segment.to_string()),
     };
-    replay(frozen, origin, encoded, None).await
+    replay(frozen, origin, encoded, now_ms).await
 }

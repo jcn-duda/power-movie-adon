@@ -123,12 +123,43 @@ fn materialize_case(root: &Path, meta: &ManifestCase) -> Result<PathBuf, String>
     Ok(dir)
 }
 
+/// `2026-10-20T09:04:30.008Z` → epoch ms (UTC). `None` fora desse formato.
+fn iso_ms(text: &str) -> Option<i64> {
+    let num = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
+    let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (h, mi, s) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    let ms = if text.get(19..20) == Some(".") { num(20..23).unwrap_or(0) } else { 0 };
+    // days_from_civil (Howard Hinnant): dias desde 1970-01-01.
+    let y = if mo <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (mo + if mo > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(((days * 24 + h) * 60 + mi) * 60_000 + s * 1_000 + ms)
+}
+
+#[test]
+fn iso_ms_bate_com_o_epoch() {
+    assert_eq!(iso_ms("1970-01-01T00:00:00.000Z"), Some(0));
+    assert_eq!(iso_ms("2026-11-15T00:00:00.000Z"), Some(1_794_700_800_000));
+    assert_eq!(iso_ms("2024-02-29T12:30:45Z"), Some(1_709_209_845_000));
+    assert_eq!(iso_ms("lixo"), None);
+}
+
 /// Remonta UM caso e devolve o diff legível do gate (vazio = igual ao Node).
 async fn replay_loaded(root: &Path, case: &LoadedCase) -> Result<(), String> {
     let body = expected_body(&case.meta, &case.response)?;
     let dir = materialize_case(root, &case.meta)?;
-    let outcome =
-        frozen_gate::run_case_with_expected(&dir, &body, E2E_ORIGIN, CONFIG_SEGMENT).await;
+    let now_ms = case.meta.captured_at.as_deref().and_then(iso_ms);
+    let outcome = frozen_gate::run_case_with_expected_at(
+        &dir,
+        &body,
+        E2E_ORIGIN,
+        CONFIG_SEGMENT,
+        now_ms,
+    )
+    .await;
     let _ = fs::remove_dir_all(&dir);
     outcome.map_err(|diff| format!("{}\n{diff}", case.meta.id))
 }
