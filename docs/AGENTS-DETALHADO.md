@@ -2293,7 +2293,13 @@ IMDb, e por isso o adaptador difere dos outros oito em três pontos:
   fatos que a primeira versão errou (achou 334 filmes/155 séries de ~20 mil por
   tipo): (1) o `skip` é um índice BRUTO e `metas.length` NÃO o mede (a página volta
   deduplicada, 12–98 metas no começo, 50 depois), então o passo é FIXO — 25 abaixo
-  de 1000 e 50 depois (`strideAt`); (2) a API devolve página VAZIA de forma
+  de 1000 e 50 depois (`strideAt`). **Superado em 2026-11-14 (`6ff5cf97`)**: no
+  Rust (`mico_discovery::walk_catalog`) o `skip` avança pelo `count` BRUTO da
+  página viva (vazia/falha repete o último tamanho). Medido: o passo fixo sobrepunha
+  70–75% (3–4× requisições) e, com página de 14 metas, pulava obras que nunca
+  entravam na fila. Avançar pelo tamanho só sub-avança (sobreposição, deduplicada
+  pelo `seen`), nunca abre lacuna; `stride_at` ficou como vocabulário do golden
+  `crawl-parsers`; (2) a API devolve página VAZIA de forma
   INTERMITENTE (o mesmo `skip` ora vem 0, ora 50), então a vazia é reconsultada
   (`MICO_CRAWL_EMPTY_RETRIES`, 2) e o fim só vale após `MICO_CRAWL_END_AFTER_EMPTIES`
   (4) vazias seguidas — nunca a primeira; (3) o catálogo tem ~20 mil obras por tipo

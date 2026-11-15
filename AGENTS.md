@@ -662,8 +662,11 @@ paralelo limitado (`CRAWL_MAX_PARALLEL`, default 3; Flare-sites numa faixa
 - Duas formas de descoberta: **sitemap** (Vaca, Nerd, TDF, Comando, Rede, BLUDV)
   e **listagem paginada** (HDR, Apache; fim por contagem, âncora só no
   incremental, `lastmod` vazio de propósito). Mico: paginação simples (filtro de
-  gênero da API é quebrado) com **passo fixo de `skip`** (25 até 1000, depois 50 —
-  `metas.length` NÃO mede o índice bruto), página vazia **intermitente** reconsultada
+  gênero da API é quebrado) com **passo dinâmico de `skip`** (desde 2026-11-14 o
+  `skip` avança pelo `count` bruto da página viva; vazia/falha repete o último
+  tamanho — o passo fixo 25/50 sobrepunha 70–75% e abria lacuna em página curta;
+  sub-avanço só sobrepõe e o `seen` deduplica; `stride_at` ficou só no golden
+  `crawl-parsers`), página vazia **intermitente** reconsultada
   e fim só após vazias seguidas (`MICO_CRAWL_MAX_PAGES`/`_EMPTY_RETRIES`/
   `_END_AFTER_EMPTIES`); catálogo real ≈ 20 mil obras por tipo; `lastmod` sintético
   por balde de releitura. Varredura completa (~50 min na VPS) só a cada
