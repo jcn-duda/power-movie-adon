@@ -221,6 +221,14 @@ pub fn notice_text(ctx: &BuildContext, out: &super::types::BuiltList) -> Option<
             out.candidates_before_debrid
         ));
     }
+    // Filme em cartaz: só existe gravação de sala e a preferência a esconde.
+    // "Procurando fontes — reabra" prometia o que não vem.
+    if out.cam_hidden > 0 {
+        return Some(format!(
+            "Só cópia de cinema (CAM) por enquanto — {} oculta(s) pelo filtro de CAM",
+            out.cam_hidden
+        ));
+    }
     if ctx.season.is_some() {
         return Some("Nada pronto ainda — procurando a temporada; reabra em instantes".into());
     }

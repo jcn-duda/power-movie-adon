@@ -379,7 +379,7 @@ pub use stream_display::{
 };
 pub use stream_ranking_dedupe::{dedupe_by_hash, is_generic_dub_token, DedupeInput, DedupeOutput};
 pub use stream_ranking_sort::{
-    passes_quality_filter, sort_and_limit, SortInput, SortOptions, SortOutput,
+    is_cam_stream, passes_quality_filter, sort_and_limit, SortInput, SortOptions, SortOutput,
 };
 pub use stream_ranking_types::{RankingStream, TraceDrop};
 pub use stream_relabel::{relabel, RelabelOptions, RelabelStream};

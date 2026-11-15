@@ -268,6 +268,9 @@ pub struct BuiltList {
     pub needs_debrid_refresh: bool,
     /// Quantos itens estavam no pool que ENTROU no debrid.
     pub candidates_before_debrid: usize,
+    /// Lista vazia só porque o `excludeCam` escondeu as gravações de cinema:
+    /// quantas eram (0 = não foi o CAM que esvaziou).
+    pub cam_hidden: usize,
     pub br_entered_debrid: usize,
     pub dub_entered_debrid: usize,
     /// Funil observacional (porte do ledger P5, versão contadores).

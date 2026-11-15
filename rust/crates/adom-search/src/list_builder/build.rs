@@ -254,6 +254,20 @@ pub fn build_stream_list(
     let files_build = ctx.files_at_build.as_ref().unwrap_or(&ctx.files_by_hash);
     let max_size_gb = episode_size_limit(&mut mapped, ctx, opts, files_build, &mut out);
     let pool_size = opts.max_results * opts.candidate_pool_factor;
+    // CAM que o `excludeCam` vai esconder: com a lista vazia, o aviso diz que
+    // só há cópia de cinema (filme em cartaz) em vez de prometer "reabra".
+    // Conta por hash: o pool ainda não passou pelo dedupe (o mesmo CAM vem de
+    // vários indexers e consultas).
+    let cam_hidden = if opts.exclude_cam {
+        mapped
+            .iter()
+            .filter(|s| adom_core::is_cam_stream(s))
+            .filter_map(|s| s.info_hash.as_deref().map(str::to_ascii_lowercase))
+            .collect::<BTreeSet<_>>()
+            .len()
+    } else {
+        0
+    };
     let sort = sort_and_limit(&SortInput {
         streams: mapped,
         options: SortOptions {
@@ -276,6 +290,10 @@ pub fn build_stream_list(
         instant_hashes: opts.instant_hashes.iter().cloned().collect(),
     });
     out.count("afterSort", sort.streams.len());
+    if sort.streams.is_empty() && cam_hidden > 0 {
+        out.cam_hidden = cam_hidden;
+        out.count("cam-hidden", cam_hidden);
+    }
     let mut streams = sort.streams;
 
     // 7. 💾 de episódio (pack: média; multiobra: só medida exata). Antes do

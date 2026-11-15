@@ -107,11 +107,14 @@ fn is_proven_br_dubbed(s: &RankingStream) -> bool {
 /// sourceFromTitle(s._magnetDn || '') !== 'CAM')` — o dn= do magnet é a prova
 /// do arquivo real quando o título do post esconde a gravação.
 fn not_cam(s: &RankingStream, exclude_cam: bool) -> bool {
-    if !exclude_cam {
-        return true;
-    }
-    source_from_title(&s.title.clone().unwrap_or_default()) != "CAM"
-        && source_from_title(s.magnet_dn.as_deref().unwrap_or("")) != "CAM"
+    !exclude_cam || !is_cam_stream(s)
+}
+
+/// Gravação de cinema pelo título do post OU pelo dn= do magnet — a régua que
+/// o `excludeCam` corta. Exposta para o aviso de lista vazia ("só CAM").
+pub fn is_cam_stream(s: &RankingStream) -> bool {
+    source_from_title(s.title.as_deref().unwrap_or("")) == "CAM"
+        || source_from_title(s.magnet_dn.as_deref().unwrap_or("")) == "CAM"
 }
 
 /// Tamanho ausente não é zero real: sem dado confiável o stream segue visível.
