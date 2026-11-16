@@ -57,8 +57,14 @@ impl AutofetchPorts {
             }
         };
         let durable = DurablePeek::new(path.clone());
-        let opts =
-            crate::verdict::alldebrid_opts(cleanup, None, Some(&holds), &wanted, &self.api_key, &durable);
+        let opts = crate::verdict::alldebrid_opts(
+            cleanup,
+            None,
+            Some(&holds),
+            &wanted,
+            &self.api_key,
+            &durable,
+        );
         let report = service.check_cached(&self.api_key, &wanted, &opts).await?;
         let Some(plan) = report.cleanup.filter(|plan| plan.suppressed.is_none()) else {
             return Ok(0);

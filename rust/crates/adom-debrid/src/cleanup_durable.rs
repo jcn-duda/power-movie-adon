@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use adom_index::kv::prefix_range;
 use rusqlite::params;
 use sha2::{Digest, Sha256};
 
@@ -363,14 +364,23 @@ impl DurablePeek {
     /// Conjunto VAZIO é prova; `None` não é.
     fn prefixed_hashes_checked(&self, prefix: &str, now: i64) -> Option<HashSet<String>> {
         self.with_conn(|conn| {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT key FROM cache
-                     WHERE substr(key, 1, length(?1)) = ?1 AND expires_at > ?2",
-                )
-                .ok()?;
+            // Faixa sargável na PK (mesma técnica do `kv`/índice): o `substr`
+            // antigo varria o acervo inteiro a cada checagem do filtro `adrm`.
+            let (lo, hi) = prefix_range(prefix);
+            let mut args: Vec<&dyn rusqlite::ToSql> = vec![&lo];
+            let sql = if let Some(hi) = &hi {
+                args.push(hi);
+                "SELECT key FROM cache
+                 WHERE key >= ?1 AND key < ?2 AND expires_at > ?3"
+            } else {
+                "SELECT key FROM cache WHERE key >= ?1 AND expires_at > ?2"
+            };
+            args.push(&now);
+            let mut stmt = conn.prepare_cached(sql).ok()?;
             let rows = stmt
-                .query_map(params![prefix, now], |row| row.get::<_, String>(0))
+                .query_map(rusqlite::params_from_iter(args), |row| {
+                    row.get::<_, String>(0)
+                })
                 .ok()?;
             Some(
                 rows.filter_map(Result::ok)

@@ -80,7 +80,10 @@ pub(crate) fn spawn_reads(
                     }
                 }
                 Err(err) => {
-                    eprintln!("[premiumize] lista de arquivos de {hash} falhou: {}", err.message());
+                    eprintln!(
+                        "[premiumize] lista de arquivos de {hash} falhou: {}",
+                        err.message()
+                    );
                 }
             }
         }

@@ -23,6 +23,10 @@ use serde_json::Value;
 mod housekeeping;
 pub use housekeeping::BootHousekeeping;
 
+// Faixa sargável de prefixo ARBITRÁRIO: mora junto do `prefix_bounds` do
+// índice; reexportada aqui porque o `NativeKv` (e o debrid) a consomem.
+pub use crate::release_index::prefix_range;
+
 // `busy_timeout` ANTES do `journal_mode`: trocar o modo do journal pede lock, e
 // sem o prazo já valendo uma abertura concorrente (outro processo no mesmo
 // `cache.db`) falhava na hora com SQLITE_BUSY em vez de esperar.
@@ -194,29 +198,38 @@ impl NativeKv {
     pub fn forget(&self, key: &str) -> Result<bool, String> {
         let conn = self.lock();
         let removed = conn
-            .execute("DELETE FROM cache WHERE key = ?1", params![key])
+            .prepare_cached("DELETE FROM cache WHERE key = ?1")
+            .map_err(|err| err.to_string())?
+            .execute(params![key])
             .map_err(|err| err.to_string())?;
         Ok(removed > 0)
     }
 
-    /// Chaves vivas com o prefixo (`substr`, como o `len` do `RawCacheStore`).
-    /// As expiradas que a varredura encontrar saem do banco na mesma passada:
-    /// quem lista um namespace também o poda, como o `cache.keys()` do Node.
+    /// Chaves vivas com o prefixo (faixa sargável na PK, como o `len` do
+    /// `RawCacheStore`). As expiradas que a varredura encontrar saem do banco
+    /// na mesma passada: quem lista um namespace também o poda, como o
+    /// `cache.keys()` do Node.
     pub fn keys_matching(&self, prefix: &str, now_ms: i64) -> Result<Vec<String>, String> {
         let conn = self.lock();
+        let (lo, hi) = prefix_range(prefix);
         let rows: Vec<(String, Option<i64>)> = {
             let mut stmt = conn
-                .prepare(
-                    "SELECT key, expires_at FROM cache
-                     WHERE substr(key, 1, length(?1)) = ?1
-                     ORDER BY key",
-                )
-                .map_err(|err| err.to_string())?;
-            let mapped = stmt
-                .query_map(params![prefix], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+                .prepare_cached(match hi {
+                    Some(_) => {
+                        "SELECT key, expires_at FROM cache
+                         WHERE key >= ?1 AND key < ?2 ORDER BY key"
+                    }
+                    None => {
+                        "SELECT key, expires_at FROM cache
+                         WHERE key >= ?1 ORDER BY key"
+                    }
                 })
                 .map_err(|err| err.to_string())?;
+            let mapped = match hi {
+                Some(hi) => stmt.query_map(params![lo, hi], key_and_expiry),
+                None => stmt.query_map(params![lo], key_and_expiry),
+            }
+            .map_err(|err| err.to_string())?;
             mapped
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|err| err.to_string())?
@@ -255,14 +268,20 @@ impl NativeKv {
     /// cota sem esta poda periódica feita por quem grava.
     pub fn prune_expired(&self, prefix: &str, now_ms: i64) -> Result<u32, String> {
         let conn = self.lock();
-        let removed = conn
-            .execute(
+        let (lo, hi) = prefix_range(prefix);
+        let removed = match hi {
+            Some(hi) => conn.execute(
                 "DELETE FROM cache
-                 WHERE expires_at > 0 AND expires_at <= ?1
-                   AND substr(key, 1, length(?2)) = ?2",
-                params![now_ms, prefix],
-            )
-            .map_err(|err| err.to_string())?;
+                 WHERE expires_at > 0 AND expires_at <= ?1 AND key >= ?2 AND key < ?3",
+                params![now_ms, lo, hi],
+            ),
+            None => conn.execute(
+                "DELETE FROM cache
+                 WHERE expires_at > 0 AND expires_at <= ?1 AND key >= ?2",
+                params![now_ms, lo],
+            ),
+        }
+        .map_err(|err| err.to_string())?;
         Ok(u32::try_from(removed).unwrap_or(u32::MAX))
     }
 
@@ -276,7 +295,7 @@ impl NativeKv {
     ) -> Result<Vec<(String, Value)>, String> {
         let conn = self.lock();
         let mut stmt = conn
-            .prepare("SELECT value, expires_at FROM cache WHERE key = ?1")
+            .prepare_cached("SELECT value, expires_at FROM cache WHERE key = ?1")
             .map_err(|err| err.to_string())?;
         let mut out = Vec::with_capacity(keys.len());
         for key in keys {
@@ -301,12 +320,15 @@ impl NativeKv {
     /// removeu, e namespace Rust-owned não tem L1 para contabilizar.
     pub fn forget_prefix(&self, prefix: &str) -> Result<u32, String> {
         let conn = self.lock();
-        let removed = conn
-            .execute(
-                "DELETE FROM cache WHERE substr(key, 1, length(?1)) = ?1",
-                params![prefix],
-            )
-            .map_err(|err| err.to_string())?;
+        let (lo, hi) = prefix_range(prefix);
+        let removed = match hi {
+            Some(hi) => conn.execute(
+                "DELETE FROM cache WHERE key >= ?1 AND key < ?2",
+                params![lo, hi],
+            ),
+            None => conn.execute("DELETE FROM cache WHERE key >= ?1", params![lo]),
+        }
+        .map_err(|err| err.to_string())?;
         Ok(u32::try_from(removed).unwrap_or(u32::MAX))
     }
 }
@@ -325,14 +347,21 @@ fn is_expired(expires_at: Option<i64>, now_ms: i64) -> bool {
 }
 
 fn forget(conn: &Connection, key: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM cache WHERE key = ?1", params![key])
+    conn.prepare_cached("DELETE FROM cache WHERE key = ?1")
+        .map_err(|err| err.to_string())?
+        .execute(params![key])
         .map_err(|err| err.to_string())?;
     Ok(())
 }
 
+/// Mapper de `keys_matching`: chave + expiração, na ordem da faixa.
+fn key_and_expiry(row: &rusqlite::Row<'_>) -> rusqlite::Result<(String, Option<i64>)> {
+    Ok((row.get(0)?, row.get(1)?))
+}
+
 fn read_row(conn: &Connection, key: &str) -> Result<Option<(String, Option<i64>)>, String> {
     let mut stmt = conn
-        .prepare("SELECT value, expires_at FROM cache WHERE key = ?1")
+        .prepare_cached("SELECT value, expires_at FROM cache WHERE key = ?1")
         .map_err(|err| err.to_string())?;
     let row = stmt
         .query_row(params![key], |row| {

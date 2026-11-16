@@ -161,6 +161,59 @@ fn guarda_duravel_checked_distingue_ilegivel_de_ausente() {
     );
 }
 
+/// Paridade da varredura por FAIXA com o `substr` antigo no filtro `adrm` e no
+/// inventário `adsub`: prefixo com char alto, vizinho do sucessor fora,
+/// permanente (`expires_at = 0`) NÃO conta como vivo (`expires_at > now`),
+/// vencida fora, hash vazio fora — e o fail-closed segue `None` sem banco.
+#[test]
+fn varredura_duravel_por_faixa_tem_paridade_com_o_substr() {
+    let account = "conta-é"; // prefixo multibyte: "adrm:v1:conta-é:"
+    let now = 10_000_000i64;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache.db");
+    let rows = [
+        (adrm_key(account, "AA"), now + 60_000),
+        (adrm_key(account, "bb"), now - 1),
+        (adrm_key(account, "cc"), 0),
+        (format!("adrm:v1:{account}:"), now + 60_000),
+        (format!("adrm:v1:{account};x"), now + 60_000),
+        (adrm_key("outra", "dd"), now + 60_000),
+        (adsub_key(account, "ee"), now + 60_000),
+        (adsub_key(account, "ff"), 0),
+    ];
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER NOT NULL);",
+        )
+        .unwrap();
+        for (key, expires) in &rows {
+            conn.execute(
+                "INSERT INTO cache (key, value, expires_at) VALUES (?1, '{}', ?2)",
+                rusqlite::params![key, expires],
+            )
+            .unwrap();
+        }
+    }
+    let peek = DurablePeek::new(&path);
+    assert_eq!(
+        peek.blocked_hashes_checked_when(account, now, true),
+        Some(HashSet::from(["aa".to_string()])),
+        "só o adrm vivo desta conta; permanente, vencida e vizinhos ficam fora"
+    );
+    assert_eq!(
+        peek.owned_hashes_when(account, now, true),
+        HashSet::from(["ee".to_string()]),
+        "adsub vivo concede posse; permanente não"
+    );
+    assert_eq!(
+        DurablePeek::new(dir.path().join("ausente.db"))
+            .blocked_hashes_checked_when(account, now, true),
+        None,
+        "a faixa não muda o fail-closed: sem banco não há prova"
+    );
+}
+
 // ── Corrida checagem × Chupim (medida na VPS em 2026-11-07) ─────────────────
 
 /// O Chupim grava `adhold` no KV DEPOIS que a checagem paralela montou a lista

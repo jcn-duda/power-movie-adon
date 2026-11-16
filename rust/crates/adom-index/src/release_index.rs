@@ -299,6 +299,31 @@ pub(crate) fn prefix_bounds(prefix: &str) -> (String, String) {
     )
 }
 
+/// Faixa de prefixo para string ARBITRÁRIA (ponte napi do `NativeKv` e filtro
+/// `adrm` do debrid): diferente de [`prefix_bounds`], não exige namespace
+/// terminado em `:` nem ASCII. Em UTF-8 a ordem de bytes é a ordem de
+/// caracteres, então o sucessor é o prefixo com o último caractere incrementado
+/// (carry sobre U+10FFFF, pulando o buraco dos surrogates D800–DFFF): toda
+/// chave com o prefixo cai em `[prefixo, sucessor)` e nada mais cai — mesma
+/// semântica do `substr(key, 1, length(?1)) = ?1`, agora sargável na PK.
+/// Prefixo vazio ou só de U+10FFFF não tem sucessor: `None` = só o limite
+/// inferior (`key >= prefixo`); para o prefixo vazio isso é a tabela inteira,
+/// exatamente como o `substr` antigo casava tudo.
+pub fn prefix_range(prefix: &str) -> (String, Option<String>) {
+    let mut base: Vec<char> = prefix.chars().collect();
+    while let Some(last) = base.pop() {
+        let mut next = u32::from(last) + 1;
+        if (0xD800..=0xDFFF).contains(&next) {
+            next = 0xE000; // surrogate não é escalar válido: pula o buraco
+        }
+        if let Some(c) = char::from_u32(next) {
+            base.push(c);
+            return (prefix.to_string(), Some(base.into_iter().collect()));
+        }
+    }
+    (prefix.to_string(), None)
+}
+
 /// Fora do TTL some; acima da cota o que expira primeiro cede lugar. Escopo do
 /// namespace `idx` — nenhuma chave de outro namespace é tocada.
 ///

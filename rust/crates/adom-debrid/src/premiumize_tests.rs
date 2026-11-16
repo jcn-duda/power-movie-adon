@@ -247,10 +247,7 @@ async fn cache_le_filesize_em_string() {
     let body = r#"{"status":"success","response":[true,false],"filesize":["647765771",0]}"#;
     let (addr, _hits) = listen(200, body, None).await;
     let pm = open(addr);
-    let report = pm
-        .check_cached(KEY, &[h1.clone(), h2], None)
-        .await
-        .unwrap();
+    let report = pm.check_cached(KEY, &[h1.clone(), h2], None).await.unwrap();
     assert_eq!(report.totals, vec![(h1, 647_765_771)]);
 }
 

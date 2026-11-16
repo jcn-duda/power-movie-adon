@@ -270,3 +270,111 @@ fn put_and_forget_rollback_ambas_as_operacoes_se_a_remocao_falhar() {
         .unwrap()
         .is_some());
 }
+
+/// Chaves do banco que casam o prefixo, em ordem. Referência: `starts_with`,
+/// o equivalente em Rust do `substr(key, 1, length(prefix))` do SQLite para
+/// texto UTF-8 válido (prefixo vazio casa tudo).
+fn chaves_com(kv: &NativeKv, prefix: &str) -> Vec<String> {
+    let conn = kv.lock();
+    let mut stmt = conn.prepare("SELECT key FROM cache ORDER BY key").unwrap();
+    stmt.query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .filter(|k| k.starts_with(prefix))
+        .collect()
+}
+
+/// Paridade com a semântica ANTIGA (`substr`): prefixo arbitrário (chars
+/// altos, teto U+10FFFF, vazio), ordem por chave, permanentes ficam na poda e
+/// vencidas saem na listagem. A referência é o `starts_with` (o `substr` do
+/// SQLite casa por caractere em texto UTF-8 válido).
+#[test]
+#[rustfmt::skip]
+fn varreduras_tem_paridade_com_o_substr_antigo() {
+    use super::prefix_range;
+    // Bordas do sucessor: carry no teto, pulo dos surrogates, `None` sem sucessor.
+    for (prefix, hi) in [
+        ("é", Some("ê")),
+        ("x\u{D7FF}", Some("x\u{E000}")),
+        ("x\u{10FFFF}", Some("y")),
+        ("", None),
+        ("\u{10FFFF}", None),
+        ("autofetch:v3:o:", Some("autofetch:v3:o;")),
+    ] {
+        assert_eq!(prefix_range(prefix), (prefix.to_string(), hi.map(str::to_string)));
+    }
+    const NOW: i64 = 10_000;
+    let rows: &[(&str, i64)] = &[
+        ("", 0),
+        ("autofetch:v3:o:", 0),
+        ("autofetch:v3:o:tt1", NOW + 1_000),
+        ("autofetch:v3:o:tt2", NOW - 1),
+        ("autofetch:v3:o:é", NOW + 1_000),
+        ("autofetch:v3:o;", NOW + 1_000),
+        ("autofetch:v3:p:x", NOW + 1_000),
+        ("é", NOW + 1_000),
+        ("éx", NOW + 1_000),
+        ("ê", NOW + 1_000),
+        ("x\u{10FFFF}", NOW + 1_000),
+        ("x\u{10FFFF}\u{10FFFF}", NOW + 1_000),
+        ("y", NOW + 1_000),
+        ("\u{10FFFF}", NOW - 1),
+        ("\u{10FFFF}\u{10FFFF}", NOW + 1_000),
+        ("x\u{D7FF}", NOW + 1_000),
+        ("x\u{E000}", NOW + 1_000),
+    ];
+    let seed = || {
+        let kv = NativeKv::open_memory().unwrap();
+        let conn = kv.lock();
+        for (key, expires) in rows {
+            conn.execute("INSERT INTO cache (key, value, expires_at) VALUES (?1, '1', ?2)",
+                rusqlite::params![key, expires]).unwrap();
+        }
+        drop(conn);
+        kv
+    };
+    for prefix in ["autofetch:v3:o:", "", "é", "x\u{10FFFF}", "\u{10FFFF}", "x\u{D7FF}", "zz:"] {
+        let casam: Vec<_> = rows.iter().copied().filter(|(k, _)| k.starts_with(prefix)).collect();
+        let mut vivas: Vec<_> = casam.iter().filter(|(_, e)| *e == 0 || *e > NOW).collect();
+        vivas.sort();
+        let vivas: Vec<String> = vivas.iter().map(|(k, _)| k.to_string()).collect();
+        let vencidas = casam.iter().filter(|(_, e)| *e > 0 && *e <= NOW).count() as u32;
+        let kv = seed();
+        assert_eq!(kv.keys_matching(prefix, NOW).unwrap(), vivas, "lista {prefix:?}");
+        assert_eq!(chaves_com(&kv, prefix), vivas, "poda na lista {prefix:?}");
+        let kv = seed();
+        assert_eq!(kv.prune_expired(prefix, NOW).unwrap(), vencidas, "poda {prefix:?}");
+        assert_eq!(chaves_com(&kv, prefix), vivas, "permanentes ficam {prefix:?}");
+        let kv = seed();
+        assert_eq!(kv.forget_prefix(prefix).unwrap(), casam.len() as u32, "reset {prefix:?}");
+        assert!(chaves_com(&kv, prefix).is_empty(), "nada do prefixo sobra");
+        assert_eq!(chaves_com(&kv, "").len(), rows.len() - casam.len(), "só o prefixo sai");
+    }
+}
+
+/// Prova de plano: a faixa BUSCA pela PK; o `substr` antigo varria a tabela
+/// inteira (mesmo controle do teste de plano do `release_index`).
+#[test]
+#[rustfmt::skip]
+fn plano_das_varreduras_do_kv_busca_na_primaria() {
+    let kv = NativeKv::open_memory().unwrap();
+    let conn = kv.lock();
+    let plano = |sql: &str, args: &[&dyn rusqlite::ToSql]| -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        stmt.query_map(args, |row| row.get::<_, String>(3)).unwrap()
+            .map(Result::unwrap).collect::<Vec<_>>().join(" | ")
+    };
+    let busca = |sql: &str, args: &[&dyn rusqlite::ToSql]| {
+        let p = plano(sql, args);
+        assert!(p.contains("SEARCH") && !p.contains("SCAN"), "faixa busca na PK: {p} ({sql})");
+    };
+    let (lo, hi, now) = ("autofetch:v3:o:", "autofetch:v3:o;", 10_000i64);
+    busca("SELECT key FROM cache WHERE key >= ?1 AND key < ?2 ORDER BY key", &[&lo, &hi]);
+    busca("SELECT key FROM cache WHERE key >= ?1 ORDER BY key", &[&lo]);
+    busca("DELETE FROM cache WHERE key >= ?1 AND key < ?2", &[&lo, &hi]);
+    busca("DELETE FROM cache WHERE expires_at > 0 AND expires_at <= ?1 AND key >= ?2 AND key < ?3",
+        &[&now, &lo, &hi]);
+    // Controle: a forma antiga nunca alcança a PRIMARY KEY.
+    let velho = plano("SELECT key FROM cache WHERE substr(key, 1, length(?1)) = ?1", &[&lo]);
+    assert!(velho.contains("SCAN"), "o substr sempre varreu: {velho}");
+}
