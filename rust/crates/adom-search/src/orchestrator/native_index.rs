@@ -65,6 +65,7 @@ impl Orchestrator {
             return Some(super::fast_path::FastPath {
                 instant: true,
                 items,
+                supplement: false,
             });
         }
         if outcome.index_covered {
@@ -78,10 +79,20 @@ impl Orchestrator {
             return Some(super::fast_path::FastPath {
                 instant: false,
                 items,
+                supplement: false,
             });
         }
         let _ = outcome.has_any();
-        None
+        // Índice não coberto: o index-only (MagnetDL, cards BR só do raspador)
+        // nunca é consultado ao vivo, então sem isto o que o colhedor achou
+        // só aparecia se a obra ficasse "coberta" — e seeders 1 fixo do
+        // MagnetDL nunca cobre (Night Life 1989: 6 no índice, 0 na lista).
+        let items = index_only_items(&outcome.index_items, &self.config.index_only_indexers);
+        (!items.is_empty()).then_some(super::fast_path::FastPath {
+            instant: false,
+            items,
+            supplement: true,
+        })
     }
 
     /// Follow-up: decisão do índice + POST fire-and-forget dos efeitos.
@@ -241,6 +252,22 @@ impl Orchestrator {
         }
         let _ = covered;
     }
+}
+
+/// Foto do índice só dos indexers index-only (comparação como o
+/// `allowed_source_indexer`: trim + minúsculas).
+pub(super) fn index_only_items(items: &[RawItem], index_only: &[String]) -> Vec<RawItem> {
+    items
+        .iter()
+        .filter(|item| {
+            let id = item.indexer.as_deref().unwrap_or("").trim().to_lowercase();
+            !id.is_empty()
+                && index_only
+                    .iter()
+                    .any(|candidate| candidate.trim().to_lowercase() == id)
+        })
+        .cloned()
+        .collect()
 }
 
 /// Um `FollowUpKind` isolado (diagnóstico/teste).

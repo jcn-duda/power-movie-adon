@@ -289,3 +289,65 @@ async fn item_do_indice_ganha_o_dn_do_acervo_e_perde_a_origem_br_russa() {
     assert!(adom_core::russian_dub_dn(&ru.origin_dn()));
     assert!(by_hash(br).origin_dn().is_empty());
 }
+
+/// Night Life 1989 (2026-11-16): o colhedor gravou 6 releases do MagnetDL
+/// (index-only, seeders 1 fixo) e nenhum aparecia — o índice não cobria a
+/// obra, a via rápida não abria e a coleta ao vivo não consulta index-only.
+#[tokio::test]
+async fn indice_descoberto_devolve_a_foto_dos_index_only_como_complemento() {
+    let mut fraco = release(
+        "dddddddddddddddddddddddddddddddddddddddd",
+        false,
+        false,
+        "SD",
+        "MagnetDownload",
+    );
+    fraco.seeders = 1;
+    let mut vivo = release(
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        false,
+        false,
+        "SD",
+        "limetorrents",
+    );
+    vivo.seeders = 1;
+    let mut cfg = config();
+    cfg.index_only_indexers = vec!["magnetdownload".into()];
+    let orch = orch(cfg, Some(FakeIndex::new(vec![fraco, vivo], false)), None);
+    let fast = orch
+        .native_fast_path(
+            &input("movie", json!({"providers": ["jackett"]})),
+            &meta(None, None),
+        )
+        .await
+        .expect("complemento do index-only");
+    assert!(fast.supplement && !fast.instant, "não é resposta rápida");
+    assert_eq!(fast.items.len(), 1, "só o index-only: o resto vem ao vivo");
+    assert_eq!(
+        fast.items[0].info_hash.as_deref(),
+        Some("dddddddddddddddddddddddddddddddddddddddd")
+    );
+    assert!(fast.items[0].from_snapshot, "foto leva 📦");
+}
+
+#[tokio::test]
+async fn indice_descoberto_sem_index_only_segue_sem_via() {
+    let mut fraco = release(
+        "ffffffffffffffffffffffffffffffffffffffff",
+        false,
+        false,
+        "SD",
+        "limetorrents",
+    );
+    fraco.seeders = 1;
+    let mut cfg = config();
+    cfg.index_only_indexers = vec!["magnetdownload".into()];
+    let orch = orch(cfg, Some(FakeIndex::new(vec![fraco], false)), None);
+    let fast = orch
+        .native_fast_path(
+            &input("movie", json!({"providers": ["jackett"]})),
+            &meta(None, None),
+        )
+        .await;
+    assert!(fast.is_none());
+}

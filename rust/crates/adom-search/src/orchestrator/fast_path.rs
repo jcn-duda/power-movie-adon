@@ -19,6 +19,9 @@ pub(super) struct FastPath {
     /// `false` = índice coberto (BR prioritário inline, globais no tail).
     pub instant: bool,
     pub items: Vec<RawItem>,
+    /// `true` = índice NÃO coberto: `items` são só a foto dos index-only, que
+    /// a busca junta à coleta ao vivo (não é resposta rápida).
+    pub supplement: bool,
 }
 
 /// Indexer da marca, normalizado como o Node compara
@@ -127,6 +130,30 @@ pub(super) fn unmark_live_snapshots(fast: &mut [RawItem], live: &[RawItem]) {
     }
 }
 
+/// Foto dos index-only junto da coleta ao vivo (índice não coberto). A ordem
+/// foto → vivo e o selo tirado por hash são os da via do índice: o dedupe do
+/// build mantém a primeira ocorrência. Não é `merge_fast_with_live`: o
+/// index-only nunca é consultado ao vivo, então "o indexer não falhou" não
+/// prova nada sobre a foto dele — só o hash vivo tira o 📦.
+pub(super) fn join_supplement(mut supplement: Vec<RawItem>, live: Vec<RawItem>) -> Vec<RawItem> {
+    unmark_live_snapshots(&mut supplement, &live);
+    supplement.extend(live);
+    supplement
+}
+
+/// O mesmo para o lote COMPLETO da promoção tardia. Task que caiu devolve a
+/// janela, como o [`full_window`].
+pub(super) fn supplement_completion(
+    supplement: Vec<RawItem>,
+    window: Vec<RawItem>,
+    completion: Option<tokio::task::JoinHandle<Vec<RawItem>>>,
+) -> Option<tokio::task::JoinHandle<Vec<RawItem>>> {
+    let handle = completion?;
+    Some(tokio::spawn(async move {
+        join_supplement(supplement, full_window(window, Some(handle)).await)
+    }))
+}
+
 /// Lista completa de uma janela de coleta: o `completion` devolve o balde
 /// INTEIRO (o que chegou no prazo + o tardio); sem ele (ou se a task caiu),
 /// vale o que a janela já tinha.
@@ -148,7 +175,11 @@ impl Orchestrator {
     /// carregam prova por item. Produção nunca chama (o campo fica `None`).
     #[doc(hidden)]
     pub fn with_frozen_fast_path(mut self, instant: bool, items: Vec<RawItem>) -> Self {
-        self.frozen_fast_path = Some(FastPath { instant, items });
+        self.frozen_fast_path = Some(FastPath {
+            instant,
+            items,
+            supplement: false,
+        });
         self
     }
 

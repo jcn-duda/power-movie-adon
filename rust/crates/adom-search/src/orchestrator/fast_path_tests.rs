@@ -247,3 +247,33 @@ fn primeira_resposta_tira_o_selo_da_foto_que_chegou_viva() {
     assert!(!head[0].from_snapshot, "o vivo provou o hash");
     assert!(head[1].from_snapshot, "sem prova viva o selo fica");
 }
+
+#[test]
+fn complemento_do_index_only_vem_antes_do_vivo_e_perde_o_selo_so_por_hash() {
+    let snapshot = |hash| RawItem {
+        from_snapshot: true,
+        ..item("Night Life 1989", hash, "magnetdownload")
+    };
+    let out = join_supplement(
+        vec![snapshot(HASH_A), snapshot(HASH_B)],
+        vec![item("Night Life 1989 1080p", HASH_A_UPPER, "therarbg")],
+    );
+    assert_eq!(out.len(), 3, "dedupe é do build");
+    assert!(!out[0].from_snapshot, "o hash vivo tira o 📦");
+    assert!(out[1].from_snapshot, "index-only não consultado segue 📦");
+    assert_eq!(out[2].indexer.as_deref(), Some("therarbg"));
+}
+
+#[tokio::test]
+async fn complemento_entra_tambem_no_lote_tardio() {
+    let supplement = vec![RawItem {
+        from_snapshot: true,
+        ..item("Night Life 1989", HASH_B, "magnetdownload")
+    }];
+    let late = tokio::spawn(async { vec![item("Night Life 1989", HASH_A, "therarbg")] });
+    let handle = supplement_completion(supplement.clone(), Vec::new(), Some(late)).unwrap();
+    let out = handle.await.unwrap();
+    assert_eq!(out.len(), 2);
+    assert_eq!(out[0].info_hash.as_deref(), Some(HASH_B));
+    assert!(supplement_completion(supplement, Vec::new(), None).is_none());
+}
