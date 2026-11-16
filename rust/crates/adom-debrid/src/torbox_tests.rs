@@ -380,3 +380,16 @@ async fn lote_parcial_e_rede_em_todos() {
     assert_eq!(err.kind(), "other");
     assert_eq!(err.message(), "nenhum lote de checagem de cache respondeu");
 }
+
+/// Plano sem vaga ativa: o TorBox enfileira e devolve `queued_id` — aceito.
+#[tokio::test]
+async fn enqueue_na_fila_do_plano_conta_como_aceito() {
+    let queued = r#"{"success":true,"detail":"queued","data":{"queued_id":77,"hash":"x","active_limit":3,"current_active_downloads":3,"torrent_id":null}}"#;
+    let (addr, _) = listen(Mode::Fixed, 200, queued, None).await;
+    assert!(open(addr).enqueue(KEY, H1, None).await.unwrap());
+    let (addr, _) = listen(Mode::Fixed, 200, r#"{"success":true,"data":{}}"#, None).await;
+    assert!(
+        !open(addr).enqueue(KEY, H1, None).await.unwrap(),
+        "sem id nenhum segue recusa"
+    );
+}

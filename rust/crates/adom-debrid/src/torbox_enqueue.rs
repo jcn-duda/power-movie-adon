@@ -35,10 +35,15 @@ impl TorBox {
                 CALL_TIMEOUT,
             )
             .await?;
+        // Sem vaga de download ativo no plano, o TorBox ENFILEIRA o torrent e
+        // devolve `queued_id` no lugar do `torrent_id` (SDK oficial:
+        // `CreateTorrentOkResponseData`). Contar isso como recusa fazia o
+        // Chupim desistir do dublado que o TorBox já tinha aceito (medido em
+        // 2026-11-16: `enqueue-error` 2 → 19 numa noite, plano Essential).
         let id = created.get("data").and_then(|data| {
-            data.get("torrent_id")
-                .filter(|value| !value.is_null())
-                .or_else(|| data.get("id").filter(|value| !value.is_null()))
+            ["torrent_id", "id", "queued_id"]
+                .iter()
+                .find_map(|key| data.get(*key).filter(|value| !value.is_null()))
         });
         Ok(id.is_some())
     }
