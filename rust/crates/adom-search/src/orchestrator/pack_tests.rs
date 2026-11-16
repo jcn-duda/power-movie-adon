@@ -113,3 +113,41 @@ async fn coleta_vazia_dispara_o_pack_da_temporada() {
         .await
         .is_none());
 }
+
+/// True Detective S3E1 (2026-11-15): o único item que casava o nome era o pack
+/// da S1, já provado fora do episódio (`idx-miss`). Contá-lo como relevante
+/// pulava o pack da temporada certa e a 1ª resposta saía vazia.
+#[tokio::test]
+async fn item_provado_fora_do_episodio_nao_segura_o_pack() {
+    use crate::orchestrator::tests::test_support::{config, MemorySwrStore, StubIndex};
+    let errado = "e".repeat(40);
+    let mut stub = StubIndex::default();
+    stub.missing = [errado.clone()].into_iter().collect();
+    let index = std::sync::Arc::new(stub);
+    let recorder = std::sync::Arc::new(Recorder(std::sync::Mutex::new(Vec::new())));
+    let orch = Orchestrator::new(config(), std::sync::Arc::new(MemorySwrStore::new()))
+        .with_collector(recorder.clone())
+        .with_index_source(index);
+    let input = SearchInput {
+        kind: "series".into(),
+        id: "tt0409591:1:1".into(),
+        encoded: Some("e30".into()),
+        prefix: String::new(),
+        options: serde_json::json!({}),
+        key: "k".into(),
+        now_ms: 0,
+        deadline_at: Some(super::super::respond::now_ms() + 5_000),
+        fence: Default::default(),
+    };
+    let mut pack_errado = item(&errado, 3.0);
+    pack_errado.title = Some("Naruto S01E01 1080p".into());
+    let mut meta = serie();
+    meta.names = vec!["Naruto".into()];
+    assert!(
+        orch.pack_fallback(&input, &meta, &[pack_errado], false)
+            .await
+            .is_some(),
+        "o hash provado fora do episódio não conta como relevante"
+    );
+    assert_eq!(recorder.0.lock().unwrap().as_slice(), ["Naruto S01"]);
+}

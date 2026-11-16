@@ -232,3 +232,26 @@ fn cam_misturado_ou_sem_exclude_cam_nao_muda_o_aviso() {
     assert_eq!(out.cam_hidden, 0);
     assert!(out.streams.iter().any(|s| !s.notice));
 }
+
+/// Quem esvaziou a lista foi OUTRO filtro (qualidade, tamanho, seeders): o
+/// CAM do pool não pode levar a culpa. Antes o aviso contava o CAM do pool cru.
+#[test]
+fn lista_vazia_por_outro_filtro_nao_culpa_o_cam() {
+    let ctx = base_ctx();
+    let cam = release("Filme Teste 2024 1080p CAMRip", "aa14000000000000000000000000000000000014");
+    let web = release("Filme Teste 2024 1080p WEB-DL", "aa15000000000000000000000000000000000015");
+    let so_4k = BuildOptions {
+        exclude_cam: true,
+        qualities: vec!["2160p".into()],
+        ..BuildOptions::default()
+    };
+    let out = build(vec![cam, web], &ctx, &so_4k, &mut StubDebrid::none());
+    assert_eq!(out.cam_hidden, 0, "a qualidade esvaziou, não o CAM");
+    assert!(
+        out.streams
+            .iter()
+            .filter_map(|s| s.item.name.as_deref())
+            .all(|name| !name.starts_with("Só cópia de cinema")),
+        "o aviso de CAM não pode aparecer"
+    );
+}

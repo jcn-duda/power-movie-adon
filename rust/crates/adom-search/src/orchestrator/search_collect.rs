@@ -241,14 +241,12 @@ impl Orchestrator {
         // A vaga só volta quando TODAS as tarefas assentam: as que seguem em
         // fundo depois da resposta continuam batendo no Jackett.
         let completion = match slot {
-            Some(slot) => {
-                let inner = window.completion;
-                tokio::spawn(async move {
-                    let items = inner.await.unwrap_or_default();
-                    drop(slot);
-                    items
-                })
-            }
+            Some(slot) => self.config.live_slots.hold_until(
+                window.completion,
+                slot,
+                "vaga de coleta",
+                &input.id,
+            ),
             None => window.completion,
         };
         (window.items, partial, Some(completion), failed, live_state)

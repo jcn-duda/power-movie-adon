@@ -238,6 +238,8 @@ impl TailEffects for RecordingTail {
 pub struct StubIndex {
     pub releases: Vec<IndexedReleaseWire>,
     pub partial: bool,
+    /// Hashes com `miss`/`missS` vivo (o `idx-miss` do episódio pedido).
+    pub missing: std::collections::HashSet<String>,
     records: Mutex<Vec<ReleaseEntry>>,
 }
 
@@ -273,6 +275,21 @@ impl ReleaseIndexSource for StubIndex {
         _now: i64,
     ) -> bool {
         self.partial
+    }
+
+    fn missing_hashes(
+        &self,
+        _imdb: &str,
+        _season: i64,
+        _episode: i64,
+        hashes: &[String],
+        _now_ms: i64,
+    ) -> std::collections::HashSet<String> {
+        hashes
+            .iter()
+            .map(|hash| hash.to_ascii_lowercase())
+            .filter(|hash| self.missing.contains(hash))
+            .collect()
     }
 
     fn record(

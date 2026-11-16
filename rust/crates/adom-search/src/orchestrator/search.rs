@@ -191,11 +191,12 @@ impl Orchestrator {
         };
         // A chave fica tomada até a coleta de fundo (pack incluído) assentar.
         let completion = match completion {
-            Some(handle) => Some(tokio::spawn(async move {
-                let items = handle.await.unwrap_or_default();
-                drop(claim);
-                items
-            })),
+            Some(handle) => Some(self.config.live_slots.hold_until(
+                handle,
+                claim,
+                "chave de coleta",
+                &input.id,
+            )),
             None => {
                 drop(claim);
                 None

@@ -102,7 +102,20 @@ impl Orchestrator {
             let mut ctx = self.build_context(input, meta);
             super::file_sizes::merge_file_sizes(self.file_sizes.as_deref(), items, &mut ctx);
             let opts = super::config::build_options_from(&input.options, &self.config.build);
-            crate::list_builder::relevant_count(items, &ctx, &opts)
+            // Hash provado fora deste episódio (`idx-miss`) sai no build: contá-lo
+            // como relevante pulava o pack da temporada certa e a 1ª resposta
+            // saía vazia (o pack da S1 casando o nome da S3).
+            let missing = self.index_missing(meta, items, input.now_ms);
+            if missing.is_empty() {
+                crate::list_builder::relevant_count(items, &ctx, &opts)
+            } else {
+                let kept: Vec<RawItem> = items
+                    .iter()
+                    .filter(|item| !missing.contains(&item.hash().to_ascii_lowercase()))
+                    .cloned()
+                    .collect();
+                crate::list_builder::relevant_count(&kept, &ctx, &opts)
+            }
         };
         let needs = items.is_empty() || (!partial && relevant == 0);
         if !needs {

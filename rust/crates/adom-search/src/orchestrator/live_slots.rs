@@ -23,7 +23,15 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
+use std::time::Duration;
+
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::task::JoinHandle;
+
+/// Prazo máximo da posse (vaga e chave) quando a coleta não assenta: 3 min
+/// (`SEARCH_LIVE_SLOT_MAX_MS`). A coleta inteira cabe com folga — o tail tem
+/// `SEARCH_TAIL_COLLECT_MS` (25 s) e o pack tardio outro tanto.
+const DEFAULT_HOLD_MAX_MS: u64 = 180_000;
 
 /// Vagas de coleta ao vivo, compartilhadas por todos os clones do
 /// orquestrador (a config vive atrás de `Arc`).
@@ -32,6 +40,8 @@ pub struct LiveSlots {
     sem: Option<Arc<Semaphore>>,
     max: usize,
     pending: Arc<Mutex<HashSet<String>>>,
+    /// Teto da posse; `None` = sem teto (default do crate e dos testes).
+    hold_max: Option<Duration>,
 }
 
 /// Posse da coleta de UMA chave; solta a chave ao cair.
@@ -43,7 +53,9 @@ pub struct PendingGuard {
 impl Drop for PendingGuard {
     fn drop(&mut self) {
         if let Some((set, key)) = self.key.take() {
-            set.lock().unwrap_or_else(|err| err.into_inner()).remove(&key);
+            set.lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .remove(&key);
         }
     }
 }
@@ -58,7 +70,14 @@ impl LiveSlots {
             sem: Some(Arc::new(Semaphore::new(max))),
             max,
             pending: Arc::default(),
+            hold_max: None,
         }
+    }
+
+    /// Teto da posse da vaga/chave (`0` = sem teto).
+    pub fn with_hold_max(mut self, hold_max_ms: u64) -> Self {
+        self.hold_max = (hold_max_ms > 0).then(|| Duration::from_millis(hold_max_ms));
+        self
     }
 
     /// Toma a coleta da chave. `None` = outra busca da mesma chave ainda coleta
@@ -93,7 +112,51 @@ impl LiveSlots {
             .ok()
             .and_then(|raw| raw.trim().parse::<usize>().ok())
             .unwrap_or(3);
-        Self::new(max)
+        let hold_max_ms = std::env::var("SEARCH_LIVE_SLOT_MAX_MS")
+            .ok()
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .unwrap_or(DEFAULT_HOLD_MAX_MS);
+        Self::new(max).with_hold_max(hold_max_ms)
+    }
+
+    /// Segura `guard` (vaga ou chave) até `completion` assentar, com o teto
+    /// `hold_max`: tarefa de fundo pendurada prendia a obra para sempre — toda
+    /// busca nova respondia só do acervo, o refresh SWR era pulado e a vaga
+    /// sumia até o restart. No teto a posse cai (com log) e a espera pelos
+    /// itens continua: o passe tardio ainda recebe o lote.
+    pub fn hold_until<T, G>(
+        &self,
+        completion: JoinHandle<T>,
+        guard: G,
+        what: &'static str,
+        id: &str,
+    ) -> JoinHandle<T>
+    where
+        T: Default + Send + 'static,
+        G: Send + 'static,
+    {
+        let hold_max = self.hold_max;
+        let id = id.to_string();
+        tokio::spawn(async move {
+            let mut completion = completion;
+            let mut guard = Some(guard);
+            let items = match hold_max {
+                None => completion.await.unwrap_or_default(),
+                Some(limit) => tokio::select! {
+                    done = &mut completion => done.unwrap_or_default(),
+                    _ = tokio::time::sleep(limit) => {
+                        eprintln!(
+                            "[search] {what} de {id} solta após {} ms sem a coleta assentar",
+                            limit.as_millis()
+                        );
+                        guard.take();
+                        completion.await.unwrap_or_default()
+                    }
+                },
+            };
+            drop(guard);
+            items
+        })
     }
 
     /// Teto configurado (`0` = sem teto).

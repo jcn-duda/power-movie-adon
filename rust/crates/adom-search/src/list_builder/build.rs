@@ -11,8 +11,8 @@ use crate::raw_item::RawItem;
 
 use super::audio_proof::apply_pt_title_dual;
 use super::finalize::finalize_streams;
-use super::size_limit::episode_size_limit;
 use super::helpers::*;
+use super::size_limit::episode_size_limit;
 use super::types::{seed_floor_for, BuildContext, BuildOptions, BuiltList, DebridCheck};
 
 fn relevance_query(ctx: &BuildContext) -> RelevanceQuery<'_> {
@@ -256,8 +256,13 @@ pub fn build_stream_list(
     let files_build = ctx.files_at_build.as_ref().unwrap_or(&ctx.files_by_hash);
     let max_size_gb = episode_size_limit(&mut mapped, ctx, opts, files_build, &mut out);
     let pool_size = opts.max_results * opts.candidate_pool_factor;
-    let cam_hidden = if opts.exclude_cam { cam_hashes(&mapped) } else { 0 };
-    let sort = sort_and_limit(&SortInput {
+    // CAM que o `excludeCam` esconde, guardados para o aviso de lista vazia.
+    let cams = if opts.exclude_cam {
+        cam_streams(&mapped)
+    } else {
+        Vec::new()
+    };
+    let sort_input = SortInput {
         streams: mapped,
         options: SortOptions {
             min_seeders: seed_floor_for(opts, ctx),
@@ -277,11 +282,15 @@ pub fn build_stream_list(
             indexer_priority: opts.indexer_priority.clone(),
         },
         instant_hashes: opts.instant_hashes.iter().cloned().collect(),
-    });
+    };
+    let sort = sort_and_limit(&sort_input);
     out.count("afterSort", sort.streams.len());
-    if sort.streams.is_empty() && cam_hidden > 0 {
-        out.cam_hidden = cam_hidden;
-        out.count("cam-hidden", cam_hidden);
+    if sort.streams.is_empty() {
+        let cam_hidden = cam_only_hidden(cams, &sort_input);
+        if cam_hidden > 0 {
+            out.cam_hidden = cam_hidden;
+            out.count("cam-hidden", cam_hidden);
+        }
     }
     let mut streams = sort.streams;
 

@@ -237,7 +237,12 @@ impl Orchestrator {
     }
 
     /// `idx-miss` do lote: só série com S/E e obra; sem índice, vazio (fail-open).
-    fn index_missing(&self, meta: &SearchMeta, items: &[RawItem], now_ms: i64) -> HashSet<String> {
+    pub(super) fn index_missing(
+        &self,
+        meta: &SearchMeta,
+        items: &[RawItem],
+        now_ms: i64,
+    ) -> HashSet<String> {
         let (Some(index), Some(season), Some(episode)) =
             (self.index.as_ref(), meta.season, meta.episode)
         else {

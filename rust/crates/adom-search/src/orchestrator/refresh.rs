@@ -31,7 +31,16 @@ impl Orchestrator {
             let ainda_stale = hit.map(|hit| hit.stale).unwrap_or(true);
             // Coleta da chave já em voo: a busca sairia só do acervo, parcial,
             // e gravaria por cima da entrada velha que o SWR ainda serve.
-            if ainda_stale && !this.config.live_slots.is_pending(&key) {
+            let em_voo = ainda_stale && this.config.live_slots.is_pending(&key);
+            if em_voo {
+                // Sem log o refresh pulado era invisível: a lista velha seguia
+                // servida e nada dizia por quê.
+                eprintln!(
+                    "[search] refresh SWR de {} pulado: coleta da chave em voo",
+                    req.id
+                );
+            }
+            if ainda_stale && !em_voo {
                 let input = SearchInput {
                     kind: req.kind.clone(),
                     id: req.id.clone(),

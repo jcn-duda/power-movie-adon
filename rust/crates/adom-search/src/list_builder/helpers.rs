@@ -235,16 +235,37 @@ pub fn drop_index_missing(
     }
 }
 
-/// CAM que o `excludeCam` vai esconder, por hash (o pool ainda não passou
-/// pelo dedupe): com a lista vazia, o aviso diz que só há cópia de cinema em
-/// vez de prometer "reabra".
-pub fn cam_hashes(mapped: &[RankingStream]) -> usize {
+/// Gravações de cinema do pool, que o `excludeCam` vai esconder.
+pub fn cam_streams(mapped: &[RankingStream]) -> Vec<RankingStream> {
     mapped
         .iter()
         .filter(|s| adom_core::is_cam_stream(s))
-        .filter_map(|s| s.info_hash.as_deref().map(str::to_ascii_lowercase))
-        .collect::<std::collections::BTreeSet<_>>()
-        .len()
+        .cloned()
+        .collect()
+}
+
+/// Lista vazia só por causa do CAM: quantos hashes de CAM passariam pelos
+/// OUTROS filtros (dublado, qualidade, tamanho, seeders) com o `excludeCam`
+/// desligado. Contar o CAM do pool cru culpava o CAM quando quem esvaziou foi
+/// outro filtro ("só dublado" num filme sem dublado, com um CAM no meio).
+/// Com a lista vazia, o não-CAM já não passou nesses filtros: sobrar CAM aqui
+/// prova que ele é o único motivo.
+pub fn cam_only_hidden(cams: Vec<RankingStream>, sorted: &adom_core::SortInput) -> usize {
+    if cams.is_empty() || !sorted.options.exclude_cam {
+        return 0;
+    }
+    let mut options = sorted.options.clone();
+    options.exclude_cam = false;
+    adom_core::sort_and_limit(&adom_core::SortInput {
+        streams: cams,
+        options,
+        instant_hashes: sorted.instant_hashes.clone(),
+    })
+    .streams
+    .iter()
+    .filter_map(|s| s.info_hash.as_deref().map(str::to_ascii_lowercase))
+    .collect::<std::collections::BTreeSet<_>>()
+    .len()
 }
 
 /// Texto do aviso de lista vazia — os mesmos estados do TS, sem os que exigem

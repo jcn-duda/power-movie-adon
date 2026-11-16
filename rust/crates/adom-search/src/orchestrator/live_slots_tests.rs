@@ -201,3 +201,42 @@ async fn vaga_espera_a_anterior_e_zero_desliga() {
     assert!(waiter.await.expect("task"), "solta a vaga, a fila anda");
     assert_eq!(slots.in_use(), 0);
 }
+
+/// Coleta de fundo pendurada não prende a obra: no teto a chave cai, mas a
+/// espera continua e o passe tardio ainda recebe os itens.
+#[tokio::test]
+async fn posse_cai_no_teto_e_os_itens_ainda_chegam() {
+    let slots = LiveSlots::new(1).with_hold_max(40);
+    let guard = slots.claim("chave", "tt0000001").expect("chave livre");
+    let completion = tokio::spawn(async {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        vec![7_u8]
+    });
+    let held = slots.hold_until(completion, guard, "chave de coleta", "tt0000001");
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    assert!(
+        !slots.is_pending("chave"),
+        "no teto a chave tem que cair mesmo com a coleta em curso"
+    );
+    assert_eq!(
+        held.await.unwrap(),
+        vec![7_u8],
+        "os itens não podem se perder"
+    );
+}
+
+/// Sem teto (default do crate) a posse dura até a coleta assentar.
+#[tokio::test]
+async fn sem_teto_a_posse_dura_ate_assentar() {
+    let slots = LiveSlots::new(1);
+    let guard = slots.claim("chave", "tt0000001").expect("chave livre");
+    let completion = tokio::spawn(async {
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        1_u32
+    });
+    let held = slots.hold_until(completion, guard, "chave de coleta", "tt0000001");
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    assert!(slots.is_pending("chave"));
+    assert_eq!(held.await.unwrap(), 1);
+    assert!(!slots.is_pending("chave"));
+}
