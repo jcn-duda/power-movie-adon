@@ -15,6 +15,7 @@ import {
   drainAutofetch,
   drainSuppressedAutofetch,
   fetchAutofetchStatus,
+  invalidateAutofetchStatus,
   pauseAutofetch,
   resetAutofetchBridgeForTests,
   setAutofetchConfig,
@@ -68,7 +69,8 @@ function headersOf(index: number): Record<string, string> {
   return (stubCalls[index].options?.headers || {}) as Record<string, string>;
 }
 
-// (a) token só no header — URL limpa, sem segredo em lugar nenhum.
+// (a) token só no header — URL limpa, sem segredo em lugar nenhum. O gateway
+// velho (sem os campos novos do worker) ganha defaults, nunca undefined.
 test('status: lê o contrato da admin e o token viaja SÓ no header', async () => {
   const stub = withStub(() => json({
     ok: true,
@@ -82,6 +84,7 @@ test('status: lê o contrato da admin e o token viaja SÓ no header', async () =
     assert.deepEqual(snap, {
       enabled: false, phase: 'prepared', paused: true,
       queueDepth: 3, lots: 2, inflight: false, intervalMs: 60_000,
+      processed: 0, skips: {}, lastError: null, vaultAccounts: 0,
     });
     assert.equal(stub.calls.length, 1);
     assert.equal(stub.calls[0].url, `${BASE}/autofetch`, 'GET no contrato da admin');
@@ -214,4 +217,121 @@ test('effect: só `effect` diferente de "none" libera o Node de fazer o trabalho
   assert.equal(autofetchEffectApplied({ ok: true }), true, 'worker vivo devolve drained sem effect');
   assert.equal(autofetchEffectApplied({ ok: false, effect: 'applied' }), false, 'recusa nunca conta');
   assert.equal(autofetchEffectApplied(null), false);
+});
+
+// (d) diagnóstico do worker: o que o Rust publica não pode ser descartado no
+// caminho do painel — métrica que chega e some é diagnóstico jogado fora.
+test('status: processed/skips/lastError/vaultAccounts chegam com coerção defensiva', async () => {
+  const stub = withStub(() => json({
+    ok: true,
+    status: {
+      enabled: true, phase: 'active', paused: false,
+      queueDepth: 1, lots: 1, inflight: true, intervalMs: 60_000,
+      processed: 12, skips: { 'no-hash': 3, budget: 1 },
+      lastError: 'store indisponível', vaultAccounts: 2,
+    },
+  }));
+  try {
+    const snap = await fetchAutofetchStatus();
+    assert.equal(snap?.processed, 12);
+    assert.deepEqual(snap?.skips, { 'no-hash': 3, budget: 1 });
+    assert.equal(snap?.lastError, 'store indisponível');
+    assert.equal(snap?.vaultAccounts, 2);
+  } finally {
+    stub.restore();
+  }
+  resetAutofetchBridgeForTests();
+  const estranho = withStub(() => json({
+    ok: true,
+    status: { enabled: true, processed: '7', skips: ['no-hash'], lastError: 42, vaultAccounts: null },
+  }));
+  try {
+    const snap = await fetchAutofetchStatus();
+    assert.equal(snap?.processed, 7, 'string numérica é coagida');
+    assert.deepEqual(snap?.skips, {}, 'array não é mapa motivo→contagem');
+    assert.equal(snap?.lastError, null, 'não-string não vira erro inventado');
+    assert.equal(snap?.vaultAccounts, 0);
+  } finally {
+    estranho.restore();
+  }
+});
+
+// (e) memo curto + dedupe: o poll de ~10s não paga uma GET por render, e `null`
+// (admin fora) NUNCA vira memo de 30s que esconderia a recuperação.
+test('memo: dentro do TTL serve a foto sem novo GET; null não esconde a recuperação', async () => {
+  const ok = withStub(() => json({ ok: true, status: { enabled: false, phase: 'prepared' } }));
+  try {
+    const first = await fetchAutofetchStatus();
+    const second = await fetchAutofetchStatus();
+    assert.equal(first, second, 'a mesma foto dentro da janela');
+    assert.equal(ok.calls.length, 1, 'o segundo poll não foi à rede');
+  } finally {
+    ok.restore();
+  }
+  invalidateAutofetchStatus();
+  const fora = withStub(() => { throw timeoutError(); });
+  try {
+    assert.equal(await fetchAutofetchStatus(), null, 'admin caiu');
+  } finally {
+    fora.restore();
+  }
+  const volta = withStub(() => json({ ok: true, status: { enabled: true, phase: 'active' } }));
+  try {
+    assert.equal((await fetchAutofetchStatus())?.phase, 'active', 'null não foi memoizado: a recuperação aparece');
+    assert.equal(volta.calls.length, 1);
+  } finally {
+    volta.restore();
+  }
+});
+
+test('dedupe: polls simultâneos pagam uma GET só', async () => {
+  const stub = withStub(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return json({ ok: true, status: { enabled: false, phase: 'prepared' } });
+  });
+  try {
+    const [a, b] = await Promise.all([fetchAutofetchStatus(), fetchAutofetchStatus()]);
+    assert.equal(a, b, 'mesma foto para os dois polls');
+    assert.equal(stub.calls.length, 1, 'o pedido em voo é compartilhado');
+  } finally {
+    stub.restore();
+  }
+});
+
+test('ação do operador invalida o memo: o poll seguinte reflete a pausa', async () => {
+  let paused = false;
+  const stub = withStub((rawUrl) => {
+    if (rawUrl.endsWith('/autofetch/pause')) {
+      paused = true;
+      return json({ ok: true, status: { enabled: true, phase: 'active', paused: true } });
+    }
+    return json({ ok: true, status: { enabled: true, phase: 'active', paused } });
+  });
+  try {
+    assert.equal((await fetchAutofetchStatus())?.paused, false);
+    assert.equal((await fetchAutofetchStatus())?.paused, false, 'memo antes da ação');
+    assert.equal(stub.calls.length, 1);
+    assert.equal((await pauseAutofetch(true))?.ok, true);
+    assert.equal((await fetchAutofetchStatus())?.paused, true, 'o poll pós-ação sai à rede e vê o estado novo');
+    assert.equal(stub.calls.length, 3, 'GET, POST e novo GET');
+  } finally {
+    stub.restore();
+  }
+});
+
+test('recusa da admin não invalida o memo (nada foi aplicado)', async () => {
+  const stub = withStub((rawUrl) => {
+    if (rawUrl.endsWith('/autofetch/pause')) {
+      return { ok: false, status: 503, json: async () => ({ ok: false, error: 'autofetch_worker_unavailable' }) };
+    }
+    return json({ ok: true, status: { enabled: false, phase: 'prepared' } });
+  });
+  try {
+    await fetchAutofetchStatus();
+    assert.equal((await pauseAutofetch(true))?.ok, false);
+    await fetchAutofetchStatus();
+    assert.equal(stub.calls.length, 2, 'GET + POST; o poll pós-recusa usou o memo');
+  } finally {
+    stub.restore();
+  }
 });

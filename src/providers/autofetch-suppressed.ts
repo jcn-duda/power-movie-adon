@@ -62,9 +62,19 @@ const SUP_PREFIX = `${prefix('autofetch')}sup:`;
 
 // Índice de processo das chaves `sup:` vivas. O agregado do painel conta a cada
 // poll e não pode varrer o KV inteiro. Este Set espelha o que a ponte gravou,
-// mantido pelas únicas operações que mudam o conjunto (note/forget/givenup) e
-// reindexado no boot (`reindexSuppressed`, mesma garantia do reindexDead).
+// mantido pelas únicas operações que mudam o conjunto (note/forget/givenup),
+// reindexado no boot (`reindexSuppressed`, mesma garantia do reindexDead) E
+// periodicamente pelo caminho de leitura (`reindexIfStale`): o worker nativo
+// também grava `sup:` pós-boot, e sem o reindex periódico o agregado subcontaria
+// o que só o nativo represou.
 const knownSuppressed = new Set<string>();
+
+// Reindex periódico: no máximo UMA varredura de prefixo a cada 30s, disparada
+// pelo agregado do painel. Só ACRESCENTA ao índice (a poda de vencidos continua
+// no próprio countAllSuppressed, via `remaining`); note/forget do Node seguem
+// donos da manutenção imediata.
+const REINDEX_EVERY_MS = 30_000;
+let lastReindexAt = Date.now();
 
 // O backoff (5min dobrando, teto 6h) e a desistência na 5ª falha moram no
 // nativo (`SuppressedV3::retry`, mesma régua de `suppressed.rs`). O Node não
@@ -197,8 +207,9 @@ function countSuppressed(adapterId: string, account: string) {
   return listAllSuppressed(adapterId, account).length;
 }
 
-/** Agregado de TODAS as contas/adapters, sem varrer o namespace: índice de processo. */
+/** Agregado de TODAS as contas/adapters, sem varrer o namespace a cada poll. */
 function countAllSuppressed(): number {
+  reindexIfStale();
   let total = 0;
   for (const key of knownSuppressed) {
     if (remaining(key) == null) {
@@ -231,6 +242,18 @@ function reindexSuppressed() {
 
 reindexSuppressed();
 
+/** Reindex barato disparado pela leitura: no máximo 1× a cada 30s. */
+function reindexIfStale(now = Date.now()): void {
+  if (now - lastReindexAt < REINDEX_EVERY_MS) return;
+  lastReindexAt = now;
+  reindexSuppressed();
+}
+
+/** Só testes: zera o relógio do reindex periódico (o índice em si fica). */
+function resetSuppressedReindexForTests(): void {
+  lastReindexAt = 0;
+}
+
 export {
   noteSuppressed,
   listSuppressed,
@@ -241,4 +264,5 @@ export {
   countAllSuppressed,
   suppressedKey,
   reindexSuppressed,
+  resetSuppressedReindexForTests,
 };

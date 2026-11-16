@@ -366,3 +366,24 @@ test('falha de drain sobre registro já liquidado não recria o registro', async
     suppressed.forgetSuppressed('draft', account, H);
   }
 });
+
+// O worker nativo TAMBÉM grava `sup:` pós-boot: o agregado precisa alcançar isso
+// via reindex periódico (no máx 1×/30s), sem depender de note/forget do Node.
+test('countAllSuppressed reindexa escritas nativas pós-boot (1×/30s)', () => {
+  const account = 'conta-reindex-vivo';
+  const hash2 = 'b'.repeat(40);
+  const key = suppressed.suppressedKey('draft', account, H);
+  const key2 = suppressed.suppressedKey('draft', account, hash2);
+  try {
+    kvSetForTest(key, { id: 'id-nativo', at: Date.now(), fails: 0, nextAt: 0 }, 600);
+    suppressed.resetSuppressedReindexForTests();
+    assert.equal(suppressed.countAllSuppressed(), 1, 'o agregado alcança o que o nativo represou');
+    kvSetForTest(key2, { id: 'id-nativo-2', at: Date.now(), fails: 0, nextAt: 0 }, 600);
+    assert.equal(suppressed.countAllSuppressed(), 1, 'dentro da janela de 30s não varre de novo');
+    suppressed.resetSuppressedReindexForTests();
+    assert.equal(suppressed.countAllSuppressed(), 2, 'vencida a janela, o reindex acrescenta');
+  } finally {
+    suppressed.forgetSuppressed('draft', account, H);
+    suppressed.forgetSuppressed('draft', account, hash2);
+  }
+});

@@ -32,6 +32,14 @@ export type AutofetchStatus = {
   lots: number;
   inflight: boolean;
   intervalMs: number;
+  /** Lotes processados desde o boot (a passagem do ciclo). */
+  processed: number;
+  /** Motivo de desistência → contagem (`autofetch.skip.<motivo>`). */
+  skips: Record<string, number>;
+  /** Última falha da passagem; `null` = nenhuma. Nunca carrega credencial. */
+  lastError: string | null;
+  /** Contas no cofre (contagem REDIGIDA: o escopo não sai do gateway). */
+  vaultAccounts: number;
 };
 
 /** Resposta das rotas de comando da admin. */
@@ -139,6 +147,16 @@ async function request(path: string, init: { method: 'GET' | 'POST'; body?: unkn
   return json;
 }
 
+/** Mapa motivo→contagem: só objeto válido entra; valor ausente/estranho vira 0. */
+function readSkips(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [motivo, contagem] of Object.entries(raw as Record<string, unknown>)) {
+    out[motivo] = Number(contagem) || 0;
+  }
+  return out;
+}
+
 /** Normaliza o `status` da admin. `null` quando o corpo não traz o objeto. */
 function readStatus(raw: unknown): AutofetchStatus | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -153,6 +171,11 @@ function readStatus(raw: unknown): AutofetchStatus | null {
     lots: Number(s.lots) || 0,
     inflight: s.inflight === true,
     intervalMs: Number(s.intervalMs) || 0,
+    // Gateway velho sem os campos novos: defaults (0/{}/null/0), nunca undefined.
+    processed: Number(s.processed) || 0,
+    skips: readSkips(s.skips),
+    lastError: typeof s.lastError === 'string' && s.lastError ? s.lastError : null,
+    vaultAccounts: Number(s.vaultAccounts) || 0,
   };
 }
 
@@ -175,6 +198,8 @@ async function command(path: string, body: unknown, where: string): Promise<Auto
     if (Number.isFinite(Number(payload.drained))) out.drained = Number(payload.drained);
     if (typeof payload.reason === 'string') out.reason = payload.reason;
     if (out.ok === false) out.error = String(payload.error || 'admin_recusou');
+    // Ação aplicada: o próximo poll do painel não pode servir a foto pré-ação.
+    if (out.ok) invalidateAutofetchStatus();
     return out;
   } catch (err) {
     if (err instanceof AdminHttpError) {
@@ -192,18 +217,50 @@ async function command(path: string, body: unknown, where: string): Promise<Auto
   }
 }
 
+// Memo curto + dedupe in-flight, mesmo padrão do `debrid-inventory-native`: o
+// painel polla a cada ~10s e não há razão para pagar uma GET por poll. Só foto
+// BOA vira memo — `null` (admin fora/sem contrato) nunca é cacheado, para a
+// recuperação aparecer no poll seguinte. A geração cobre a corrida: uma foto
+// que estava em voo quando o operador agiu não memoiza o retrato velho.
+const STATUS_MEMO_TTL_MS = 30_000;
+let statusMemo: AutofetchStatus | null = null;
+let statusMemoAt = 0;
+let statusInFlight: Promise<AutofetchStatus | null> | null = null;
+let statusGeneration = 0;
+
+/** Esquece a foto memoizada (ação do operador mudou o estado do worker). */
+export function invalidateAutofetchStatus(): void {
+  statusGeneration += 1;
+  statusMemo = null;
+  statusMemoAt = 0;
+}
+
 /** Estado do worker nativo. `null` = admin fora (ou sem o contrato). */
 export async function fetchAutofetchStatus(): Promise<AutofetchStatus | null> {
+  if (statusMemo && Date.now() - statusMemoAt < STATUS_MEMO_TTL_MS) return statusMemo;
+  if (statusInFlight) return statusInFlight;
   if (!available()) return null;
-  try {
-    const status = readStatus(await request('/autofetch', { method: 'GET' }));
-    noteSuccess();
-    return status;
-  } catch (err) {
-    noteFailure('status');
-    metrics.count(isTimeout(err) ? 'autofetch.bridge.timeouts' : 'autofetch.bridge.offline');
-    return null;
-  }
+  const generation = statusGeneration;
+  let pending: Promise<AutofetchStatus | null> | null = null;
+  pending = (async () => {
+    try {
+      const status = readStatus(await request('/autofetch', { method: 'GET' }));
+      noteSuccess();
+      if (status && generation === statusGeneration) {
+        statusMemo = status;
+        statusMemoAt = Date.now();
+      }
+      return status;
+    } catch (err) {
+      noteFailure('status');
+      metrics.count(isTimeout(err) ? 'autofetch.bridge.timeouts' : 'autofetch.bridge.offline');
+      return null;
+    } finally {
+      if (statusInFlight === pending) statusInFlight = null;
+    }
+  })();
+  statusInFlight = pending;
+  return pending;
 }
 
 /**
@@ -242,9 +299,13 @@ export function autofetchEffectApplied(result: AutofetchResult | null): boolean 
   return result?.ok === true && result.effect !== 'none';
 }
 
-/** Só testes: esquece falhas/backoff do processo. */
+/** Só testes: esquece falhas/backoff do processo e o memo de estado. */
 export function resetAutofetchBridgeForTests(): void {
   failures = 0;
   blockedUntil = 0;
   lastBackoffLogAt = 0;
+  statusMemo = null;
+  statusMemoAt = 0;
+  statusInFlight = null;
+  statusGeneration += 1;
 }
