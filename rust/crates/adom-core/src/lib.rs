@@ -395,8 +395,6 @@ pub use tmdb_br_aliases::{filter_br_aliases, filter_br_aliases_typed, MAX_BR_ALI
 pub use video_header::{
     is_mp4, parse_mp4_tail, parse_video_resolution, quality_from_resolution, VideoResolution,
 };
-/// Único formato de manifest aceito pelo consumidor do golden.
-///
-/// Contrato on-disk compartilhado com o gerador `scripts/golden` e com o
-/// checker Node; aqui é só a constante do formato, sem comportamento.
+/// Único formato de manifest aceito pelo consumidor do golden. Contrato
+/// on-disk com o gerador `scripts/golden` e o checker Node; só a constante.
 pub const MANIFEST_FORMAT: &str = "adom-golden-manifest/1";

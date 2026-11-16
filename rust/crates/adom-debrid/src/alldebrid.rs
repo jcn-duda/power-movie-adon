@@ -110,8 +110,7 @@ pub struct PlayFile {
 }
 
 /// Play do AllDebrid. A resposta carrega os efeitos para o aplicador nativo
-/// (`play_effects_native`) gravar: o negativo do `davail` e a prova de
-/// áudio/resolução/tamanho.
+/// (`play_effects_native`): negativo do `davail` e prova de áudio/resolução/tamanho.
 #[derive(Debug, Default, PartialEq)]
 pub struct PlayResult {
     pub url: Option<String>,

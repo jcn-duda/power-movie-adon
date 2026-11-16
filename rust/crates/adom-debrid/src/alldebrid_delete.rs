@@ -110,10 +110,9 @@ impl DeleteConfig {
         config
     }
 
-    /// Sem espera E sem env global: os testes não podem depender do
-    /// `DEBRID_AL_CLEANUP_KILL` do processo — outra suíte o liga em paralelo e
-    /// a fila voltava vazia (removed=[], stopped=KillSwitch) de forma
-    /// intermitente. Quem testa o kill-switch passa `kill` explícito.
+    /// Sem espera E sem env global: outra suíte liga o `DEBRID_AL_CLEANUP_KILL`
+    /// do processo em paralelo e a fila voltava vazia (removed=[],
+    /// stopped=KillSwitch) de forma intermitente. Quem testa o kill-switch passa `kill` explícito.
     pub fn fast() -> Self {
         Self {
             delays: Vec::new(),
