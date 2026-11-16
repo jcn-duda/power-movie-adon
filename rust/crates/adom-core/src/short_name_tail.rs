@@ -38,12 +38,17 @@ pub fn short_name_tail_contradicts(
     let Some(year_at) = (at..tokens.len()).find(|&i| is_year_token(&tokens[i])) else {
         return false;
     };
-    tokens[at..year_at].iter().any(|t| {
-        !is_non_naming_token(t)
-            && !is_non_latin_token(t)
-            && !is_plain_digits(t)
-            && !universe.contains(t)
-    })
+    // "Rejuvenatrix (aka The Rejuvenator) 1988": do "aka" em diante é o
+    // título alternativo da MESMA obra, não uma palavra que nomeia outra.
+    tokens[at..year_at]
+        .iter()
+        .take_while(|t| *t != "aka")
+        .any(|t| {
+            !is_non_naming_token(t)
+                && !is_non_latin_token(t)
+                && !is_plain_digits(t)
+                && !universe.contains(t)
+        })
 }
 
 /// Palavras de temporada/episódio que DELIMITAM a identidade: da primeira em

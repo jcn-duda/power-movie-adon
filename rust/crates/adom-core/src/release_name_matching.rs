@@ -144,6 +144,38 @@ pub fn matches_name(title: &str, name: &str, tokens: Option<&[String]>) -> bool 
     matches_name_coverage(&wanted, list)
 }
 
+/// Artigos que o release costuma omitir. Lista estreita de propósito (a de
+/// `LEADING_ARTICLES` tem "die"/"das"/"um", que abririam "Hard" para Die Hard).
+const OMITTABLE_ARTICLES: &[&str] = &[
+    "the", "a", "an", "o", "os", "el", "la", "le", "les", "los", "las",
+];
+
+/// `matches_name` que tolera o ARTIGO inicial omitido pelo release: em nome
+/// de duas palavras com artigo ("The Rejuvenator", "The Matrix") a cobertura
+/// conta o artigo e "Rejuvenator 1988 DVDRip" ficava em 50% (corte 60%) —
+/// perdia o filme quando o TMDB não tinha alias sem artigo (medido em
+/// 2026-11-16). A identidade de nome curto e a estrutura (prefixo + ano) do
+/// chamador seguem decidindo: "Invite the Devil to Come and Play (2026)" não
+/// vira "The Invite".
+pub fn matches_name_article_optional(title: &str, name: &str, tokens: Option<&[String]>) -> bool {
+    if matches_name(title, name, tokens) {
+        return true;
+    }
+    let words = title_tokens(name);
+    if words.len() != 2 || !OMITTABLE_ARTICLES.contains(&words[0].as_str()) {
+        return false;
+    }
+    let computed;
+    let list = match tokens {
+        Some(list) => list,
+        None => {
+            computed = title_tokens(title);
+            computed.as_slice()
+        }
+    };
+    list.iter().any(|t| *t == words[1])
+}
+
 /// Corte de 0.6 do `matches_name` com `name_coverage_tokens(name)` (`wanted`)
 /// e os tokens do título (`list`) já calculados.
 pub(crate) fn matches_name_coverage(wanted: &[String], list: &[String]) -> bool {

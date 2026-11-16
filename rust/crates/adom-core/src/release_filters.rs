@@ -29,7 +29,7 @@ use crate::matches_br_title;
 use crate::matches_episode;
 use crate::matches_episode_work_identity;
 use crate::matches_global_series_no_marker;
-use crate::matches_name;
+use crate::matches_name_article_optional;
 use crate::matches_short_name_identity;
 use crate::matches_title_structure;
 use crate::matching_decisions::{
@@ -352,7 +352,7 @@ impl<'a> Decider<'a> {
                     cut,
                 );
             }
-            matches_name(title, name, Some(tokens))
+            matches_name_article_optional(title, name, Some(tokens))
                 && matches_short_name_identity(title, check, Some(tokens), dn)
                 && (if q.is_series {
                     !year_contradicts(tokens, q.year, true)

@@ -910,6 +910,12 @@ Testes: `test/tv-code.test.ts`, `test/aftv-resolve.test.ts`,
   E o hash está aprovado em `SEARCH_FOREIGN_MAGNET_MIN_WORKS` (2; 0 desliga) outras
   obras. `dn=` divergente sozinho não condena: título traduzido é a regra. O cortado
   não entra em `entered_raw`: zerar o `passed_filter` apagaria a evidência.
+- Release global que omite o artigo ("Rejuvenator 1988" para *The
+  Rejuvenator*) casa o nome de duas palavras com artigo
+  (`matches_name_article_optional`, lista estreita: sem "die"/"das"/"um"), e
+  "(aka …)" entre o nome curto e o ano não condena (`short_name_tail`).
+  Divergência proposital do TS do `esm` desde 2026-11-16; os goldens não têm
+  esses casos (`tests/release_title_article_aka.rs` os prende).
 - Sigla com ponto ("G.O.R.A.", "S.W.A.T.") vira uma palavra (`collapseAcronyms`)
   no `normalizeTitle` e na consulta dos **globais** (`shapeSearchQuery`); os BR
   ficam com os pontos (BLUDV: "S.W.A.T." 127, "SWAT" 0).
