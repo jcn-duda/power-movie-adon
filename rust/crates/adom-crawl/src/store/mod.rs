@@ -38,6 +38,10 @@ mod tests_part2;
 // fonte de teste sob a catraca de 400 linhas do CI Rust.
 #[cfg(test)]
 mod tests_part3;
+// Quarta metade: melhorias medidas em 2026-11-15 (fresh-first dos portões,
+// terminal de expirado, reparos de boot e revisita de no-torrent) — catraca.
+#[cfg(test)]
+mod tests_repairs;
 
 // Re-exports para conveniência do consumidor.
 pub use admin_ops::{RequeueReport, CURSOR_MOVIE_KEY, CURSOR_TV_SHOW_KEY, LEGACY_CURSOR_KEY};

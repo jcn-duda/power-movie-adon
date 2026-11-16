@@ -101,6 +101,9 @@ async fn main() {
     // mesmo do TS: rodada sem página nenhuma nunca fecha o round.
     let listing_max_pages_per_round =
         env_u64("CRAWL_LISTING_MAX_PAGES_PER_ROUND", 20).max(1) as u32;
+    // Revisita de no-torrent antigos (dias sem releitura; 0 = desligado —
+    // medido sem ganho em 2026-11-15, fica como knob do operador).
+    let revisit_no_torrent_days = env_u64("CRAWL_REVISIT_NO_TORRENT_DAYS", 0);
 
     eprintln!(
         "[adom-sidecar] iniciando — db={}, node={}, port={}, idle_window={}ms, \
@@ -148,6 +151,22 @@ async fn main() {
         Err(e) => eprintln!("[adom-sidecar] mico: reparo falhou: {e}"),
     }
 
+    // Reparo único dos portões BLUDV expirados persistentes (tries>=10 com
+    // veredito "expirado"): TTL ~30 dias, a fila antiga nunca drenaria a tempo.
+    match store.repair_gate_expired_once() {
+        Ok(0) => {}
+        Ok(n) => eprintln!("[adom-sidecar] bludv: {n} portão(ões) expirado(s) viraram terminal"),
+        Err(e) => eprintln!("[adom-sidecar] bludv: reparo de portões falhou: {e}"),
+    }
+
+    // Reparo único das linhas presas legadas: fantasmas done/releases=0 e
+    // erros terminais retentáveis (whitelist medida em 2026-11-15).
+    match store.repair_stuck_legacy_once() {
+        Ok(0) => {}
+        Ok(n) => eprintln!("[adom-sidecar] {n} linha(s) presas de volta à fila (legado)"),
+        Err(e) => eprintln!("[adom-sidecar] reparo de linhas presas falhou: {e}"),
+    }
+
     // ── 4. Cria o cliente HTTP ───────────────────────────────────────
     // O cliente será integrado ao motor quando o Agente 1 conectar a camada HTTP.
     let _http_client = SidecarHttpClient::new(node_url.clone(), auth_token.clone());
@@ -163,6 +182,7 @@ async fn main() {
         discovery_interval_ms,
         series_enabled,
         listing_max_pages_per_round,
+        revisit_no_torrent_days,
         ..Default::default()
     };
     // Conecta o PageEngine real (C5): fetch + parser. Sem isto o motor usa

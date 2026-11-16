@@ -12,10 +12,13 @@
 //!
 //! Dedupe por portão: o magnet obtido é gravado durável no `crawl_state`
 //! (`gate-magnet:<gate>`) ANTES da entrega; se a entrega falhar, a rodada
-//! seguinte re-entrega SEM pagar de novo. Pendência nunca vira veneno: erro do
-//! resolver não toca `tries` nem backoff — o post segue `gate-pending`. Já a
-//! ENTREGA recusada pela ingestão recua (`error_backoff_ms` do motor) antes de
-//! voltar ao lote: a re-entrega não gasta teto, então sem recuo virava laço.
+//! seguinte re-entrega SEM pagar de novo. Falha de pagamento RECÚA a linha
+//! (`error_backoff_ms` do motor) antes de voltar ao lote — sem recuo, a cabeça
+//! da fila comia o teto por hora para sempre; "pendente" da cadeia em curso
+//! repete sem recuo. A ENTREGA recusada pela ingestão recua pela mesma régua.
+//! Exceção: portão EXPIRADO persistente (3ª falha com veredito "expirado")
+//! vira terminal — o link morreu (TTL medido ~26–31 dias) e pagar de novo é
+//! queimar FlareSolverr à toa (`gate/failure.rs`).
 //!
 //! A resolução usa o RESOLVER LOCAL ([`HttpGateResolver`], porta 8700 do
 //! bludv, modo bloqueante `wait=1`). Ao resolver, a release é gravada no
@@ -27,6 +30,7 @@
 
 mod config;
 mod defer;
+mod failure;
 mod flare_signal;
 mod resolver;
 mod work;
@@ -80,6 +84,8 @@ enum RowOutcome {
     Pending,
     /// Nem chegou a pagar (dedupe).
     Skipped,
+    /// Portão expirado persistente: veredito terminal gravado, saiu da fila.
+    Expired,
 }
 
 /// Executor de fundo: uma rodada a cada `interval_ms`, com os três freios e o
@@ -296,22 +302,7 @@ impl GateExecutor {
         // prazo do motor — este await é livre).
         let magnet = match self.resolver.resolve(&g.gate, &g.row.url).await {
             Ok(m) => m,
-            Err(e) => {
-                // Falha do resolver: pendente, sem veneno. O custo é real
-                // (a tentativa de pagamento acontece): cobrado no teto.
-                eprintln!(
-                    "[gate] {} {}: pagamento não saiu: {e}",
-                    g.row.site, g.row.url_key
-                );
-                self.state.lock().await.spent_this_hour += 1;
-                // Sem recuo, as mesmas linhas da cabeça da fila comiam o teto
-                // por hora para sempre e o resto nunca era pago. Pendência da
-                // cadeia em curso não é falha: repete na rodada seguinte.
-                if e.starts_with("pendente") {
-                    return RowOutcome::Pending;
-                }
-                return self.defer_delivery(g, "pagamento", &e).await;
-            }
+            Err(e) => return self.payment_failed(g, &e).await,
         };
 
         // Prova do pagamento ANTES da entrega: se o processo morrer entre as
@@ -388,6 +379,10 @@ mod tests;
 #[cfg(test)]
 #[path = "gate_backoff_tests.rs"]
 mod backoff_tests;
+
+#[cfg(test)]
+#[path = "gate_expiry_tests.rs"]
+mod expiry_tests;
 
 #[cfg(test)]
 #[path = "gate_flare_signal_tests.rs"]

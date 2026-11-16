@@ -37,10 +37,14 @@ impl CrawlStore {
         Ok(())
     }
 
-    /// Toma posts pendentes de portÃ£o (o mais antigo primeiro, pelo
-    /// `checked_at` da marcaÃ§Ã£o) para o executor de fundo. NÃƒO marca inflight:
-    /// o executor Ã© single-loop e a linha continua `gate-pending` durante o
-    /// pagamento â€” se o processo morrer no meio, a pendÃªncia sobrevive.
+    /// Toma posts pendentes de portão (o MAIS NOVO primeiro, pelo `added_at`
+    /// da marcação) para o executor de fundo. Fresh-first é o salvamento ótimo:
+    /// o portão tem TTL medido de ~26–31 dias (2026-11-15), então o mais novo
+    /// tem a maior chance de ainda estar vivo — o mais antigo primeiro drenava
+    /// uma fila de expirados na frente dos portões novos que pagariam de fato.
+    /// NÃO marca inflight: o executor é single-loop e a linha continua
+    /// `gate-pending` durante o pagamento — se o processo morrer no meio, a
+    /// pendência sobrevive.
     pub fn take_gate_batch(&self, limit: usize) -> Result<Vec<GateRow>, StoreError> {
         if limit == 0 {
             return Ok(Vec::new());
@@ -52,7 +56,7 @@ impl CrawlStore {
              FROM crawl_url u \
              JOIN crawl_gate g ON g.site = u.site AND g.url_key = u.url_key \
              WHERE u.status = 'gate-pending' AND u.next_at <= ?2 \
-             ORDER BY u.checked_at, u.url_key \
+             ORDER BY g.added_at DESC, u.url_key \
              LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64, now_ms()], |row| {
@@ -95,6 +99,29 @@ impl CrawlStore {
             "DELETE FROM crawl_gate WHERE site = ?1 AND url_key = ?2",
             params![site, url_key],
         )?;
+        Ok(())
+    }
+
+    /// Veredito TERMINAL de portão expirado: a linha vira `error` com
+    /// `next_at=0` (o "Reprocessar erros" do painel ainda a alcança; um
+    /// `lastmod` novo também a revive pelo reset do `enqueue_discovered`) e o
+    /// portão sai da fila — pagar de novo um link morto é queimar FlareSolverr.
+    /// A tentativa que trouxe o veredito é debitada (`tries+1`), como no recuo.
+    /// Só age em linha `gate-pending`: se ela já fechou, o portão não se toca.
+    pub fn expire_gate(&self, site: &str, url_key: &str, error: &str) -> Result<(), StoreError> {
+        let tx = self.conn().unchecked_transaction()?;
+        let changed = tx.execute(
+            "UPDATE crawl_url SET status='error', next_at=0, tries=tries+1, error=?3 \
+             WHERE site=?1 AND url_key=?2 AND status='gate-pending'",
+            params![site, url_key, error],
+        )?;
+        if changed > 0 {
+            tx.execute(
+                "DELETE FROM crawl_gate WHERE site = ?1 AND url_key = ?2",
+                params![site, url_key],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 }

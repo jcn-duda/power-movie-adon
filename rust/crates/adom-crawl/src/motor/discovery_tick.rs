@@ -31,6 +31,12 @@ use crate::discovery::{
 };
 use crate::sitemap::CrawlPageKind;
 
+/// Teto de linhas `no-torrent` devolvidas à fila por RODADA de descoberta
+/// (revisita do knob `revisit_no_torrent_days`). Baixo de propósito: a revisita
+/// é aposta sem ganho medido (ver `MotorConfig::revisit_no_torrent_days`) e
+/// não pode competir com a descoberta de novidade pelo teto por hora.
+const NO_TORRENT_REVISIT_PER_ROUND: u32 = 3;
+
 /// O que UMA rodada de descoberta fez (log/painel).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryTick {
@@ -197,6 +203,7 @@ impl CrawlMotor {
             for (key, value) in &report.state_writes {
                 self.write_state(site, key, value).await;
             }
+            self.revisit_stale_no_torrent(site, now).await;
         } else if !report.state_writes.is_empty() {
             eprintln!(
                 "[motor] descoberta {site}: estado durável NÃO gravado ({} chave(s)) — \
@@ -231,6 +238,31 @@ impl CrawlMotor {
             refreshed,
             cost: report.request_cost,
             partial,
+        }
+    }
+
+    /// Revisita de `no-torrent` antigos (knob `revisit_no_torrent_days`,
+    /// default 0 = desligado). Roda DEPOIS de a fila aceitar a rodada — até
+    /// rodada vazia a dispara: o corte incremental nunca devolve post antigo,
+    /// então a revisita não depende do que a descoberta trouxe. Log separado:
+    /// o `DiscoveryTick` é o contrato da rodada de descoberta, não da revisita.
+    async fn revisit_stale_no_torrent(&self, site: &str, now: i64) {
+        let days = self.config.revisit_no_torrent_days;
+        if days == 0 {
+            return;
+        }
+        let cutoff = now.saturating_sub((days * 24 * 3_600_000) as i64);
+        let alvo = site.to_string();
+        match with_store(self.store.clone(), move |db| {
+            db.revisit_stale_no_torrent(&alvo, cutoff, NO_TORRENT_REVISIT_PER_ROUND)
+        })
+        .await
+        {
+            Ok(0) => {}
+            Ok(n) => eprintln!(
+                "[motor] descoberta {site}: {n} no-torrent antigo(s) de volta à fila (revisita)"
+            ),
+            Err(e) => eprintln!("[motor] descoberta {site}: revisita falhou: {e}"),
         }
     }
 

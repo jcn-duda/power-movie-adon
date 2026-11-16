@@ -147,11 +147,12 @@ async fn teto_estourado_no_meio_da_rodada() {
         }
     );
     assert_eq!(chamadas.load(Ordering::SeqCst), 1, "não paga além do teto");
-    let (status, _, _) = ler_linha(&caminho, "post-2");
-    assert_eq!(
-        status, "gate-pending",
-        "o segundo fica para a rodada seguinte"
-    );
+    // Fresh-first pode inverter quem é pago primeiro; o que importa é o teto.
+    let pagos = ["post-1", "post-2"]
+        .iter()
+        .filter(|k| ler_linha(&caminho, k).0 == "done")
+        .count();
+    assert_eq!(pagos, 1, "um pago, o outro fica para a rodada seguinte");
 }
 
 /// (e) Falha do resolver: pendente, SEM VENENO (tries intacta, pendência na

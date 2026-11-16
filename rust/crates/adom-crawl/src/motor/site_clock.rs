@@ -247,11 +247,18 @@ impl MarkResult {
         }
         // Falha de parse/rede/entrega: backoff crescente até esgotar tentativas.
         let tentativas = row.tries.saturating_add(1);
-        let esgotado = tentativas >= cfg.max_tries.max(1);
         let mut error = work.error.clone();
         if !delivered && error.is_empty() {
             error = "entrega ao node falhou".to_string();
         }
+        // 404 de post NÃO esgota (medido em 2026-11-15): os `http_404` mais
+        // recentes do Vaca (0,2 h de idade) respondiam 200 no host novo — o
+        // 404 era TRANSITÓRIO da migração de host, não post removido. Orbita
+        // em backoff até o recuo longo de 7 dias (≥ 20 tentativas), como os
+        // persistentes. "protetor: HTTP 404" não começa com o rótulo e segue
+        // esgotável normal.
+        let perene = error.starts_with("http_404");
+        let esgotado = tentativas >= cfg.max_tries.max(1) && !perene;
         // Fase 0: 429/503 NUNCA é esgotamento — o site pediu espera, não a URL
         // morreu. Chega aqui pelo caminho textual (sub-fetch do Vaca, adapters
         // que falam String): o store não incrementa `tries` pelo prefixo, então

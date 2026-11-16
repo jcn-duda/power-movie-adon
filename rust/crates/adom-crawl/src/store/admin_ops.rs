@@ -14,8 +14,9 @@
 //!
 //! `clear_site` (o "Zerar site", com o veredito da sonda preservado) e os
 //! reparos únicos de boot (Vaca no-torrent; tries de adiamento 429; filas
-//! presas do Mico) completam as ações do painel. Fica fora do `ops.rs` pela
-//! catraca de 400 linhas.
+//! presas do Mico; portões BLUDV expirados; fantasmas e erros terminais
+//! retentáveis legados) completam as ações do painel. Fica fora do `ops.rs`
+//! pela catraca de 400 linhas.
 
 use rusqlite::params;
 
@@ -195,6 +196,79 @@ impl CrawlStore {
         )?;
         self.set_state(MARK_SITE, MARK, &affected.to_string())?;
         Ok(affected as u32)
+    }
+
+    /// Reparo ÚNICO dos portões BLUDV expirados persistentes: `gate-pending`
+    /// com `tries >= 10` e veredito "expirado" no erro. Medido em 2026-11-15:
+    /// 351 portões assim, todos do host antigo (TTL ~26–31 dias, 3/3 sondados
+    /// mortos) — contra um throughput de ~67 pagamentos/dia, a fila antiga
+    /// nunca drenaria a tempo e comia o teto na frente dos portões novos.
+    /// Vira `error` terminal (mesma régua do `expire_gate` do executor, que
+    /// dali em diante fecha os novos na 3ª falha); revive por `lastmod` novo
+    /// ou "Reprocessar erros". Marcador global: o dano é da fila, não de um
+    /// site — e a 2ª rodada é no-op.
+    pub fn repair_gate_expired_once(&self) -> Result<u32, StoreError> {
+        const MARK_SITE: &str = "__global__";
+        const MARK: &str = "repair:gate-expired-v1";
+        if self.get_state(MARK_SITE, MARK)?.is_some() {
+            return Ok(0);
+        }
+        let tx = self.conn().unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM crawl_gate WHERE (site, url_key) IN (\
+             SELECT site, url_key FROM crawl_url \
+             WHERE status = 'gate-pending' AND tries >= 10 AND error LIKE '%expirado%')",
+            [],
+        )?;
+        let affected = tx.execute(
+            "UPDATE crawl_url SET status = 'error', next_at = 0 \
+             WHERE status = 'gate-pending' AND tries >= 10 AND error LIKE '%expirado%'",
+            [],
+        )?;
+        tx.commit()?;
+        self.set_state(MARK_SITE, MARK, &affected.to_string())?;
+        Ok(affected as u32)
+    }
+
+    /// Reparo ÚNICO das linhas presas legadas (duas classes medidas em
+    /// 2026-11-15, ~780 linhas):
+    /// - fantasma `done/releases=0` (5 no RedeTorrent, séries): conclusão
+    ///   falsa do motor antigo — mesma régua do reparo do Mico, agora global;
+    /// - erros TERMINAIS retentáveis (`status='error' AND next_at=0`, ~770):
+    ///   whitelist EXATA das strings medidas — `ingest: catalogo-sem-nomes`
+    ///   (catálogo fora no momento), `http_500`/`http_404` (site em obras/
+    ///   migração), `entrega ao node falhou`, `step-timeout`, layout sem h1,
+    ///   `TypeError:` e `flare:` legados. Ficam de fora os estruturais:
+    ///   `series_truncated` (teto de passe) e `blocked_host` (registry).
+    ///
+    /// Reset completo (`pending`, tries/next_at/error/progress zerados);
+    /// identidade (url/lastmod/imdb/kind) preservada. Marcador global fecha a
+    /// 2ª rodada; `done` com acervo e os demais status não se tocam.
+    pub fn repair_stuck_legacy_once(&self) -> Result<u32, StoreError> {
+        const MARK_SITE: &str = "__global__";
+        const MARK: &str = "repair:stuck-rows-v1";
+        if self.get_state(MARK_SITE, MARK)?.is_some() {
+            return Ok(0);
+        }
+        let fantasmas = self.conn().execute(
+            "UPDATE crawl_url SET status = 'pending', tries = 0, next_at = 0, \
+             error = '', releases = 0, progress = '' \
+             WHERE status = 'done' AND releases = 0",
+            [],
+        )?;
+        let erros = self.conn().execute(
+            "UPDATE crawl_url SET status = 'pending', tries = 0, next_at = 0, \
+             error = '', progress = '' \
+             WHERE status = 'error' AND next_at = 0 AND (\
+               error IN ('ingest: catalogo-sem-nomes', 'http_500', 'http_404', \
+                         'entrega ao node falhou', 'step-timeout') \
+               OR error LIKE 'layout: página sem <h1>%' \
+               OR error LIKE 'TypeError:%' OR error LIKE 'flare:%')",
+            [],
+        )?;
+        let total = (fantasmas + erros) as u32;
+        self.set_state(MARK_SITE, MARK, &total.to_string())?;
+        Ok(total)
     }
 
     /// Amostra as chaves e aplica o UPDATE com o MESMO predicado — SELECT e

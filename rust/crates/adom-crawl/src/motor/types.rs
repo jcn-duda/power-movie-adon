@@ -145,6 +145,12 @@ pub struct MotorConfig {
     /// Teto de páginas por RODADA da descoberta por LISTAGEM (HDR/Apache).
     /// Porta de `CRAWL_LISTING_MAX_PAGES_PER_ROUND`; 0 desliga o teto.
     pub listing_max_pages_per_round: u32,
+    /// Revisita de `no-torrent` antigos: a cada rodada de descoberta, devolve
+    /// à fila as mais velhas sem releitura há mais de X dias. Default 0 =
+    /// DESLIGADO — medido em 2026-11-15: 12/12 obras de 20–46 dias (7 sites)
+    /// continuavam sem torrent, então sem ganho comprovado não há custo de
+    /// rede; ligar é aposta do operador. Porta de `CRAWL_REVISIT_NO_TORRENT_DAYS`.
+    pub revisit_no_torrent_days: u64,
     /// Relógio de espera POR SITE (Fase 0 do 429). Vive na config porque o
     /// `BatchCtx` que chega às tasks É a config — quem marca espera (run_one,
     /// descoberta) e quem consulta site de molho (claim do tick) parte daqui.
@@ -174,6 +180,7 @@ impl Default for MotorConfig {
             discovery_interval_ms: 3_600_000,
             series_enabled: true,
             listing_max_pages_per_round: crate::listing::cursor::LISTING_ROUND_MAX_PAGES,
+            revisit_no_torrent_days: 0,
             site_clock: Arc::new(SiteClock::new()),
         }
     }

@@ -112,4 +112,32 @@ impl CrawlStore {
         tx.commit()?;
         Ok(report)
     }
+
+    /// Revisita de `no-torrent` ANTIGOS: devolve à fila as `limit` linhas
+    /// `no-torrent` mais velhas do site (por `checked_at`) que passaram de
+    /// `cutoff` sem releitura. O corte incremental da descoberta (`should_keep`)
+    /// nunca devolve post antigo ao `enqueue_discovered` — obra sem torrent de
+    /// semanas atrás só volta por aqui. Reset preservando `lastmod`/identidade:
+    /// a releitura dá o veredito honesto do motor atual. `checked_at` não se
+    /// toca: a linha só sai da cabeça da revisita quando for trabalhada (o
+    /// `mark_result` avança o carimbo) — e saindo de `no-torrent`, o predicado
+    /// não a casa de novo.
+    pub fn revisit_stale_no_torrent(
+        &self,
+        site: &str,
+        cutoff: i64,
+        limit: u32,
+    ) -> Result<u32, StoreError> {
+        let affected = self.conn().execute(
+            "UPDATE crawl_url SET status = 'pending', tries = 0, next_at = 0, \
+             error = '', progress = '' \
+             WHERE site = ?1 AND url_key IN (\
+               SELECT url_key FROM crawl_url \
+               WHERE site = ?1 AND status = 'no-torrent' \
+                 AND checked_at > 0 AND checked_at < ?2 \
+               ORDER BY checked_at ASC LIMIT ?3)",
+            params![site, cutoff, limit],
+        )?;
+        Ok(affected as u32)
+    }
 }

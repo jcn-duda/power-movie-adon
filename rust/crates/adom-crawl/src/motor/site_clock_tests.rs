@@ -230,6 +230,32 @@ fn from_work_erro_comum_esgotado_continua_terminal() {
     );
 }
 
+/// 404 de post NÃO esgota (medido em 2026-11-15: os `http_404` mais recentes
+/// do Vaca respondiam 200 no host novo — migração, não post removido). Orbita
+/// em backoff até o recuo longo; o 404 do PROTETOR (rótulo próprio) segue
+/// esgotável normal.
+#[test]
+fn from_work_http404_nao_esgota_mas_protetor_404_esgota() {
+    let agora = now_ms();
+    let row = linha("vacatorrent", 2); // max_tries 3: seria a última
+    let work = error_work(&row, "http_404");
+    let mark = MarkResult::from_work(&row, &work, false, &cfg(3), agora);
+    assert!(
+        mark.next_at > agora,
+        "404 de post orbita em backoff, não vira terminal"
+    );
+    // Persistente: na 20ª tentativa dorme os 7 dias, como os demais.
+    let row = linha("vacatorrent", MAX_PERSISTENT_TRIES - 1);
+    let work = error_work(&row, "http_404");
+    let mark = MarkResult::from_work(&row, &work, false, &cfg(3), agora);
+    assert_eq!(mark.next_at, agora + PERSISTENT_BACKOFF_MS);
+    // O 404 do protetor tem rótulo próprio (não começa com http_404).
+    let row = linha("nerdfilmes", 2);
+    let work = error_work(&row, "protetor: HTTP 404");
+    let mark = MarkResult::from_work(&row, &work, false, &cfg(3), agora);
+    assert_eq!(mark.next_at, 0, "protetor 404 segue esgotável normal");
+}
+
 #[test]
 fn recuo_longo_apos_vinte_tentativas() {
     let agora = now_ms();

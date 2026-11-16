@@ -185,6 +185,10 @@ fn build_nerdfilmes() -> SiteNetworkConfig {
             // 2026-11-09: galaxytorrents.org → 301 → www.galaxyfilmes.org (mesmo
             // WordPress, temas Galaxytorrents/XFilmeshd, sitemap AIOSEO).
             "galaxyfilmes.org",
+            // 2026-11-15: galaxyfilmes.org → 301 → www.cinetorrents.net (mesmo
+            // WordPress; sitemap AIOSEO redireciona /sitemap_index.xml →
+            // /sitemap.xml). Medido: sitemap OK e obra com 5 magnets no host novo.
+            "cinetorrents.net",
         ]),
         protector_suffixes: protector_suffixes(&[]),
         assert_only_suffixes: Vec::new(),
