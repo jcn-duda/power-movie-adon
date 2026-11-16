@@ -47,4 +47,23 @@ impl CrawlMotor {
             *streak = 0;
         }
     }
+
+    /// Um lote sem entrega (gancho dos testes de outros módulos).
+    #[cfg(test)]
+    pub async fn settle_budget_for_test(&self) {
+        self.settle_budget(0, 0).await;
+    }
+
+    /// Fim da auto-pausa (em ms; `0` = sem auto-pausa) — o painel a mostra.
+    pub async fn auto_pause_until(&self) -> i64 {
+        *self.pause_until.lock().await
+    }
+
+    /// "Retomar" do operador também tira a auto-pausa: sem isso o botão não
+    /// fazia nada durante a hora de molho (consentimento do operador, como o
+    /// Node já fazia com a dele).
+    pub async fn clear_auto_pause(&self) {
+        *self.pause_until.lock().await = 0;
+        *self.failure_streak.lock().await = 0;
+    }
 }

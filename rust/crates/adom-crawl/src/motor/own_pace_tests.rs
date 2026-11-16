@@ -323,3 +323,26 @@ async fn descoberta_de_serie_vira_url_de_serie() {
         .expect("série na fila");
     assert_eq!(kind, "tv_show", "descoberta de série usa tv_show na fila");
 }
+
+/// Mico pausado pelo operador (`/crawl/control`): a lane não dá passo nem
+/// chama a API.
+#[tokio::test]
+async fn mico_pausado_pelo_operador_nao_da_passo() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("crawl.db");
+    let caminho = db.to_str().unwrap();
+    let node = node(false, Arc::new(AtomicUsize::new(0))).await;
+    let api = Arc::new(FakeApi::nova());
+    let motor = motor_com_lane(
+        config_freada(caminho, &node),
+        api.clone(),
+        Arc::new(FakeIngest::delivered()),
+    );
+    let patch = serde_json::from_str(r#"{"site":"mico","paused":true}"#).unwrap();
+    motor.control().apply(&patch).unwrap();
+    assert!(motor.own_pace_once().await.expect("sem erro").is_none());
+    assert!(
+        api.chamadas.lock().unwrap().is_empty(),
+        "nenhuma chamada à API"
+    );
+}

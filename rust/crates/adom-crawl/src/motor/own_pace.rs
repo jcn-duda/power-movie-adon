@@ -37,7 +37,7 @@ impl CrawlMotor {
         let Some(lane) = self.mico.clone() else {
             return Ok(None);
         };
-        if !self.ingest_ready() {
+        if !self.ingest_ready() || self.control.site_blocked("mico", super::types::now_ms()) {
             return Ok(None);
         }
         self.ensure_store()?;
@@ -54,6 +54,9 @@ impl CrawlMotor {
         // ingestão o passo não pode reivindicar (queimaria `tries`).
         if !self.ingest_ready() {
             return;
+        }
+        if self.control.site_blocked("mico", super::types::now_ms()) {
+            return; // pausado/desligado/no teto pelo operador
         }
         if !lane.try_enter() {
             return; // passo anterior ainda em curso
@@ -79,6 +82,7 @@ impl CrawlMotor {
             ingest: self.ingest.clone(),
             store: self.store.clone(),
             cfg: self.config.clone(),
+            control: self.control.clone(),
         }
     }
 }

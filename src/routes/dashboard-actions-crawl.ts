@@ -23,6 +23,7 @@ import type { AppServices } from './types.js';
 import { maxFromBody } from './dashboard-actions-shared.js';
 import { knownSites } from '../utils/crawler-live-schema.js';
 import config from '../config.js';
+import { sendControl, type CrawlControlPatch, type CrawlControlReply } from '../providers/crawl-control-native.js';
 
 type ActionDeps = {
   services: AppServices;
@@ -97,21 +98,54 @@ function sidecarFailed(
   return res.status(502).json({ ok: false, action, site, error: 'internal_error', errors: [message] });
 }
 
+/** Chaves da config que o sidecar obedece (o resto só existe no Node). */
+const CONTROL_KEYS = ['enabled', 'delayMs', 'maxPerHour'] as const;
+
+/** Subconjunto do patch que vai ao sidecar, com o valor EFETIVO local (a trava
+ * de segurança do site — ritmo só sobe, teto só desce — já aplicada). */
+function controlFields(patch: unknown, effective: Record<string, unknown>): CrawlControlPatch {
+  const keys = patch && typeof patch === 'object' ? Object.keys(patch) : [];
+  const out: CrawlControlPatch = {};
+  for (const key of CONTROL_KEYS) {
+    if (!keys.includes(key)) continue;
+    const value = effective[key];
+    if (key === 'enabled') out.enabled = value === true;
+    else if (typeof value === 'number') out[key] = value;
+  }
+  return out;
+}
+
+/** Falha do controle no sidecar: 400 é pedido inválido, o resto é ponte (502). */
+function controlFailed(
+  services: AppServices, res: express.Response, action: string, site: string | null, reply: CrawlControlReply,
+): express.Response {
+  const message = reply.error ?? 'sidecar recusou o pedido';
+  services.metrics.count('dashboard.crawl.control.failed');
+  const status = reply.status === 400 ? 400 : 502;
+  const error = status === 400 ? 'validation_error' : 'internal_error';
+  return res.status(status).json({ ok: false, action, site, error, errors: [message] });
+}
+
 /** `site` do corpo: string limpa, ou `''` (o handler decide o alvo). */
 function siteFromBody(req: express.Request): string {
   return typeof req.body?.site === 'string' ? req.body.site.trim() : '';
 }
 
-export const crawlPause: CrawlAction = ({ services, req, res, action }) => {
+export const crawlPause: CrawlAction = async ({ services, req, res, action }) => {
+  // O sidecar é quem raspa: a pausa só vale se ele a recebeu.
+  const reply = await sendControl({ paused: Boolean(req.body?.paused) });
+  if (!reply.ok) return controlFailed(services, res, action, null, reply);
   const result = services.crawler.setPaused(Boolean(req.body?.paused));
   services.log.info(`[dashboard] raspagem ${result.paused ? 'pausada' : 'retomada'}`);
   return res.json({ action, ...result });
 };
 
 /** Fase 8: pausa manual de UM site (a global é `crawl-pause`). */
-export const crawlSitePause: CrawlAction = ({ services, req, res, action }) => {
+export const crawlSitePause: CrawlAction = async ({ services, req, res, action }) => {
   const site = siteFromBody(req);
   if (!site) return res.status(400).json({ ok: false, action, error: 'site obrigatório' });
+  const reply = await sendControl({ site, paused: Boolean(req.body?.paused) });
+  if (!reply.ok) return controlFailed(services, res, action, site, reply);
   const result = services.crawler.setPaused(Boolean(req.body?.paused), site);
   if (result.ok === false) {
     services.metrics.count('dashboard.crawl.pause.site.rejected');
@@ -190,17 +224,24 @@ export const crawlConfigGet: CrawlAction = ({ services, res, action }) => {
   return res.json({ ok: true, action, config: services.crawlerLive.snapshot() });
 };
 
-export const crawlConfigSet: CrawlAction = ({ services, req, res, action }) => {
+export const crawlConfigSet: CrawlAction = async ({ services, req, res, action }) => {
   const outcome = services.crawlerLive.set(req.body?.patch);
   if (!outcome.ok) {
     return res.status(400).json({ ok: false, error: 'validation_error', errors: outcome.errors });
+  }
+  const fields = controlFields(req.body?.patch, outcome.effective as unknown as Record<string, unknown>);
+  if (Object.keys(fields).length > 0) {
+    const reply = await sendControl(fields);
+    if (!reply.ok) return controlFailed(services, res, action, null, reply);
   }
   services.metrics.count('dashboard.crawl.config.set');
   services.log.info(`[dashboard] config da raspagem atualizada: ${outcome.overriddenKeys.join(', ')}`);
   return res.json({ action, ...outcome });
 };
 
-export const crawlConfigReset: CrawlAction = ({ services, res, action }) => {
+export const crawlConfigReset: CrawlAction = async ({ services, res, action }) => {
+  const reply = await sendControl({ reset: true });
+  if (!reply.ok) return controlFailed(services, res, action, null, reply);
   const effective = services.crawlerLive.reset();
   services.metrics.count('dashboard.crawl.config.reset');
   services.log.info('[dashboard] config da raspagem restaurada aos padrões do .env');
@@ -213,12 +254,17 @@ export const crawlConfigReset: CrawlAction = ({ services, res, action }) => {
  * Chave fora do subconjunto fechado é 400 — erro de painel, não override
  * silencioso.
  */
-export const crawlSiteConfigSet: CrawlAction = ({ services, req, res, action }) => {
+export const crawlSiteConfigSet: CrawlAction = async ({ services, req, res, action }) => {
   const site = siteFromBody(req);
   const outcome = services.crawlerLive.setSiteOverride(site, (req.body?.patch ?? {}) as Record<string, unknown>);
   if (!outcome.ok) {
     services.metrics.count('dashboard.crawl.site.config.rejected');
     return res.status(400).json({ ok: false, action, site: outcome.site, error: 'validation_error', errors: outcome.errors });
+  }
+  const fields = controlFields(req.body?.patch, outcome.effective as unknown as Record<string, unknown>);
+  if (Object.keys(fields).length > 0) {
+    const reply = await sendControl({ site: outcome.site, ...fields });
+    if (!reply.ok) return controlFailed(services, res, action, outcome.site, reply);
   }
   services.metrics.count('dashboard.crawl.site.config.set');
   services.log.info(`[dashboard] config do site ${site} atualizada: ${outcome.overriddenKeys.join(', ') || '(nenhuma)'}`);
@@ -226,12 +272,14 @@ export const crawlSiteConfigSet: CrawlAction = ({ services, req, res, action }) 
 };
 
 /** Fase 8: apaga o override do site (volta aos padrões do `.env`). */
-export const crawlSiteConfigReset: CrawlAction = ({ services, req, res, action }) => {
+export const crawlSiteConfigReset: CrawlAction = async ({ services, req, res, action }) => {
   const site = siteFromBody(req);
   const outcome = services.crawlerLive.clearSiteOverride(site);
   if (!outcome.ok) {
     return res.status(400).json({ ok: false, action, site: outcome.site, error: 'validation_error', errors: outcome.errors });
   }
+  const reply = await sendControl({ site: outcome.site, reset: true });
+  if (!reply.ok) return controlFailed(services, res, action, outcome.site, reply);
   services.metrics.count('dashboard.crawl.site.config.reset');
   services.log.info(`[dashboard] config do site ${site} restaurada aos padrões do .env`);
   return res.json({ ok: true, action, site: outcome.site, removedKeys: outcome.overriddenKeys, effective: outcome.effective });

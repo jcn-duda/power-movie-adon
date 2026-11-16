@@ -270,6 +270,10 @@ async fn main() {
         eprintln!("[adom-sidecar] descoberta: DESLIGADA (CRAWL_DISCOVERY=false)");
     }
     let motor = Arc::new(motor);
+    // Botões do painel (pausa, liga/desliga, ritmo, teto) gravados no crawl.db.
+    motor
+        .control()
+        .replace(adom_crawl::sidecar::control::load(&store));
 
     // ── 6. Inicia o servidor HTTP do sidecar ─────────────────────────
     // O servidor roda em background, em loopback, para o painel e entrypoint.
@@ -289,6 +293,7 @@ async fn main() {
     if gate_hourly > 0 {
         let offset = env_u64("BR_RESOLVERS_PORT_OFFSET", 0) as u16;
         let mut gate_cfg = GateExecutorConfig::from_motor(&config);
+        gate_cfg.control = Some(motor.control());
         gate_cfg.resolver_host = env_or("BR_RESOLVERS_HOST", "127.0.0.1");
         gate_cfg.resolver_port = 8700u16.saturating_add(offset); // bludv
                                                                  // Segunda conexão WAL no mesmo crawl.db: o motor tem a sua e o

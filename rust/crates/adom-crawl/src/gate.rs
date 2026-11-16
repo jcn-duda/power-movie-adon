@@ -195,12 +195,15 @@ impl GateExecutor {
     pub async fn run_round(&self) -> Result<GateRoundReport, String> {
         let now = now_ms();
         self.roll_window(now).await;
-        // 0. Sem quem grave, pagar só gastaria FlareSolverr e teto.
-        if self.ingest.is_none() {
+        // 0. Sem quem grave, pagar só gastaria FlareSolverr e teto; BLUDV
+        //    pausado/desligado pelo operador também não paga.
+        let parado =
+            (self.cfg.control.as_ref()).is_some_and(|c| c.site_blocked("bludv-cardigann", now));
+        if self.ingest.is_none() || parado {
             return Ok(GateRoundReport {
                 claimed: 0,
                 paid: 0,
-                skipped: Some("ingest-pendente"),
+                skipped: Some(if parado { "pausado" } else { "ingest-pendente" }),
             });
         }
         // 1. Faixa Flare ocupada: nem consulta o Node. O solver é um por vez e

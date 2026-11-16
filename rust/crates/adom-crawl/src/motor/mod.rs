@@ -37,6 +37,7 @@
 //! a ingestão ausente (`ingest-pendente`).
 
 mod budget;
+pub mod control;
 mod deliver;
 /// Descoberta de sitemap dentro do tick (alimenta a fila `crawl_url`).
 mod discovery_tick;

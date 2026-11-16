@@ -19,6 +19,7 @@ import * as crawlerLive from '../utils/crawler-live.js';
 import { crawlReadEngine, refreshCrawlSnapshots, type CrawlReadEngine } from './crawl-read-engine.js';
 import { buildCrawlerStatus, type CrawlSiteRuntimeView, type CrawlerStatusInput } from './crawl-status.js';
 import { createCrawlActions } from './crawl-actions.js';
+import { controlSnapshot, refreshControl, _setControlForTest } from './crawl-control-native.js';
 import * as registry from './crawl-sites/registry.js';
 import { cursorsView, _resetForTest as resetCursorsView } from './crawl-cursor-load.js';
 import { knownSites, siteConfigOf, type CrawlerEffectiveConfig } from '../utils/crawler-live-schema.js';
@@ -40,9 +41,16 @@ function runtimeFor(id: string): SiteRuntime {
   return ensureRuntime(runtimes, id);
 }
 
-/** ids dos sites vivos (`CRAWL_SITES` + os ligados no painel), sem credencial. */
+/**
+ * ids dos sites do painel. Com o sidecar respondendo, são TODOS os dele (ele
+ * raspa os nove, com ou sem `CRAWL_SITES`); sem resposta, a config local
+ * (`CRAWL_SITES` + os ligados no painel), como antes.
+ */
 function siteIds(): string[] {
-  return knownSites(crawlerLive.effective());
+  const local = knownSites(crawlerLive.effective());
+  if (!controlSnapshot()) return local;
+  const rust = registry.tableIds().filter((id) => registry.isRustSite(id));
+  return [...new Set([...rust, ...local])];
 }
 
 /**
@@ -78,7 +86,7 @@ function start(): void {
   started = true;
   const live = crawlerLive.effective();
   if (!live.enabled) {
-    log.info('[crawl] desativado (enabled=false)');
+    log.info('[crawl] CRAWL_ENABLED=false: o Node não pede requeue; quem liga/pausa o raspador é o controle do sidecar');
     return;
   }
   for (const id of siteIds()) {
@@ -142,16 +150,30 @@ function statusEngine(configured: number): CrawlReadEngine | null {
 /** Vista do runtime de um site para o card. */
 function siteView(id: string, live: CrawlerEffectiveConfig, engine: CrawlReadEngine): CrawlSiteRuntimeView {
   const rt = runtimeFor(id);
-  const cfg = siteConfigOf(live, id);
+  const local = siteConfigOf(live, id);
+  // O controle do sidecar é a verdade (é o que o motor obedece); sem foto
+  // dele, vale a config local.
+  const snap = controlSnapshot();
+  const ctl = snap?.control;
+  const own = ctl?.sites[id];
+  const cfg = ctl
+    ? {
+      ...local,
+      enabled: ctl.enabled && own?.enabled !== false,
+      dryRun: false,
+      delayMs: own?.delayMs ?? ctl.delayMs ?? local.delayMs,
+      maxPerHour: own?.maxPerHour ?? ctl.maxPerHour ?? local.maxPerHour,
+    }
+    : local;
   return {
     id,
     label: rt.label || registry.siteInfo(id).label,
     ready: rt.ready,
-    paused: rt.paused,
+    paused: ctl ? own?.paused === true : rt.paused,
     autoPause: rt.autoPause,
     cursors: cursorsView(id, engine),
     nextDiscoveryAt: rt.nextDiscoverAt,
-    pagesThisHour: rt.hourPages.current(),
+    pagesThisHour: snap ? Number(snap.pagesThisHour[id] ?? 0) : rt.hourPages.current(),
     openRunId: rt.openRunId,
     errorStreak: rt.policy.errorStreakCount,
     canaryStreak: rt.policy.canaryStreakCount,
@@ -167,20 +189,24 @@ function siteView(id: string, live: CrawlerEffectiveConfig, engine: CrawlReadEng
     lastActiveAt: rt.lastActiveAt,
     // A seleção de site é do sidecar; daqui só sai a exclusão pela config do
     // operador (pausa e teto do sidecar chegam pela foto dele no bloco `crawl`).
-    skipReason: live.enabled && cfg.enabled ? null : 'desabilitado',
+    skipReason: (ctl ? cfg.enabled : live.enabled && cfg.enabled) ? null : 'desabilitado',
     site: registry.siteInfo(id),
   };
 }
 
 /** Foto para o painel (montagem em crawl-status.ts). */
 function status() {
-  const live = crawlerLive.effective();
+  const local = crawlerLive.effective();
+  const ctl = controlSnapshot()?.control;
+  const live = ctl
+    ? { ...local, enabled: ctl.enabled, maxPerHour: ctl.maxPerHour ?? local.maxPerHour }
+    : local;
   const configured = siteIds();
   const engine = statusEngine(configured.length);
   const input: CrawlerStatusInput = {
     // engine é null só sem site configurado (lista vazia de todo modo).
     sites: engine ? configured.map((id) => siteView(id, live, engine)) : [],
-    globalPaused: paused,
+    globalPaused: ctl ? ctl.paused : paused,
     active: configured[0] || null,
     // O custo por hora é contado pelo sidecar (foto em `sidecar` no bloco).
     pagesThisHourTotal: 0,
@@ -190,8 +216,10 @@ function status() {
 }
 
 /** Renova a foto do sidecar antes de montar o bloco do painel. */
-function refreshStatus(): Promise<void> {
-  return refreshCrawlSnapshots(siteIds());
+async function refreshStatus(): Promise<void> {
+  // O controle primeiro: é ele que diz quais sites o painel mostra.
+  await refreshControl();
+  await refreshCrawlSnapshots(siteIds());
 }
 
 /** Estado limpo entre casos (o processo sobe `start()` uma vez só). */
@@ -200,6 +228,7 @@ export function _resetForTest(): void {
   paused = false;
   runtimes.clear();
   resetCursorsView();
+  _setControlForTest(null);
 }
 
 export { start, status, refreshStatus, setPaused, simulate };

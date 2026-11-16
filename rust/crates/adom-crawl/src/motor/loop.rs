@@ -24,6 +24,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration, Instant};
 
+use super::control::CrawlControl;
 use super::ingest::PageIngest;
 use super::mico_lane::MicoLane;
 use super::site_clock::{deferred_step, delay_efetivo};
@@ -74,6 +75,8 @@ pub(super) struct BatchCtx {
     pub(super) ingest: Option<Arc<dyn PageIngest>>,
     pub(super) store: StoreHandle,
     pub(super) cfg: MotorConfig,
+    /// Controle do operador (ritmo e teto por site; `control.rs`).
+    pub(super) control: Arc<CrawlControl>,
 }
 
 /// Custo e entrega de UMA linha trabalhada.
@@ -88,6 +91,7 @@ pub(super) async fn run_one(ctx: BatchCtx, row: UrlRow) -> TaskReport {
     // A MESMA cerca vale para as duas metades do passo: a engine para de ler e
     // a ingestão para de gravar quando o prazo estoura.
     let deadline_at = Instant::now() + deadline;
+    ctx.control.note_page(&row.site, now_ms());
     let outcome = match tokio::time::timeout_at(deadline_at, ctx.engine.execute(&row)).await {
         Ok(o) => o,
         // Prazo duro: a geração é invalidada e a linha vira erro retentável.
@@ -118,7 +122,11 @@ pub(super) async fn run_one(ctx: BatchCtx, row: UrlRow) -> TaskReport {
     // portão para valer para TODO desfecho — o gate-pending também leu o site.
     ctx.cfg.site_clock.wait(
         &row.site,
-        now_ms().saturating_add(delay_efetivo(&row.site, ctx.cfg.delay_ms) as i64),
+        now_ms().saturating_add(
+            ctx.control
+                .delay_for(&row.site, delay_efetivo(&row.site, ctx.cfg.delay_ms))
+                as i64,
+        ),
     );
 
     // Post pendente de portão (BLUDV): NADA a entregar ao Node ainda — a
@@ -173,6 +181,8 @@ pub struct CrawlMotor {
     pub(super) discover_cursor: Arc<Mutex<usize>>,
     /// Há rodada de descoberta em curso? Uma de cada vez, em task própria.
     pub(super) discovery_busy: Arc<AtomicBool>,
+    /// Pausa, liga/desliga, ritmo e teto do operador (`control.rs`).
+    pub(super) control: Arc<CrawlControl>,
 }
 
 impl CrawlMotor {
@@ -199,7 +209,13 @@ impl CrawlMotor {
             discover_next_at: Arc::new(Mutex::new(HashMap::new())),
             discover_cursor: Arc::new(Mutex::new(0)),
             discovery_busy: Arc::new(AtomicBool::new(false)),
+            control: Arc::new(CrawlControl::default()),
         }
+    }
+
+    /// Estado de controle do operador (a rota `/crawl/control` o usa).
+    pub fn control(&self) -> Arc<CrawlControl> {
+        self.control.clone()
     }
 
     /// Injeta o parser (C5). Sem isto o motor não reivindica nenhuma URL.
@@ -256,6 +272,9 @@ impl CrawlMotor {
         if *self.global_paused.lock().await {
             return Ok(TickOutcome::Skipped("pausado"));
         }
+        if let Some(motivo) = self.control.stopped() {
+            return Ok(TickOutcome::Skipped(motivo));
+        }
         if now < *self.pause_until.lock().await {
             return Ok(TickOutcome::Skipped("auto-pausa"));
         }
@@ -263,7 +282,7 @@ impl CrawlMotor {
         // throttle dele (`MICO_CRAWL_MIN_GAP_MS`) e não divide teto nem vaga.
         self.spawn_own_pace();
         self.roll_hour_window(now).await;
-        if *self.pages_this_hour.lock().await >= self.config.max_per_hour {
+        if *self.pages_this_hour.lock().await >= self.control.global_cap(self.config.max_per_hour) {
             return Ok(TickOutcome::Skipped("teto-horario"));
         }
         // Freio: app em uso sempre ganha da raspagem.
@@ -287,7 +306,9 @@ impl CrawlMotor {
         self.spawn_discovery();
         let limit = self.config.max_parallel.max(1);
         // Sites de molho não entram no claim (Fase 0): a store pula-os.
-        let skip = self.config.site_clock.waiting_sites(now);
+        // Pausado, desligado ou no teto pelo operador também fica fora.
+        let mut skip = self.config.site_clock.waiting_sites(now);
+        skip.extend(self.control.blocked_sites(now));
         let batch = with_store(self.store.clone(), move |db| {
             db.take_next_batch(limit, &skip)
         })
@@ -333,7 +354,7 @@ impl CrawlMotor {
             active: *self.running.lock().await,
             sites: self.snapshot_sites().await,
             pages_this_hour: *self.pages_this_hour.lock().await,
-            global_paused: *self.global_paused.lock().await,
+            global_paused: *self.global_paused.lock().await || self.control.stopped().is_some(),
             // Fase 0: quem está de molho e quantos 429/503 o processo viu.
             holds: self.config.site_clock.holds(now_ms()),
             deferred_count: self.config.site_clock.deferred_count(),

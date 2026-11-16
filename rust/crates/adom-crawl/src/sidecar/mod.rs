@@ -9,6 +9,7 @@ pub mod activity;
 /// Rotas administrativas do crawl (`/crawl/*`): requeue, reprocessar sem obra
 /// e cursor. Catraca de 400 linhas fora do `server.rs`.
 pub mod admin;
+pub mod control;
 pub mod http_client;
 pub mod server;
 /// Foto do `crawl.db` para o painel (`GET /crawl/site-snapshot`).
@@ -18,6 +19,9 @@ pub mod wiring;
 
 #[cfg(test)]
 mod admin_tests;
+#[cfg(test)]
+#[path = "control_tests.rs"]
+mod control_tests;
 #[cfg(test)]
 mod snapshot_tests;
 

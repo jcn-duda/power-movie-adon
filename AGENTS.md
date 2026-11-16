@@ -742,7 +742,13 @@ paralelo limitado (`CRAWL_MAX_PARALLEL`, default 3; Flare-sites numa faixa
   existem mais**. Sem `TMDB_API_KEY` a fiação não monta a ingestão (sem nomes o
   `record` queimaria `tries` de toda página). A invalidação do `streams.db` do
   gateway sai pela API admin (`POST /streams/invalidate`), fail-open.
-- Config por site no painel (`siteOverrides`); sites do painel nascem desligados.
+- **Os botões do painel vão ao sidecar** (`GET/POST /crawl/control`, ponte
+  `src/providers/crawl-control-native.ts`): pausa e liga/desliga global e por
+  site, ritmo (`delayMs`) e teto por hora. O estado mora no `crawl_state`
+  (site `__control__`) e sobrevive ao restart; o tick, a lane do Mico, a
+  descoberta e o executor de portão obedecem. "Retomar" global também tira a
+  auto-pausa. `CRAWL_ENABLED`/`CRAWL_SITES` e o `dryRun` são só do Node: o
+  sidecar raspa os nove sites e o painel mostra todos quando ele responde.
 - **O Node não abre o `crawl.db`.** O card lê a foto de `GET /crawl/site-snapshot`
   do sidecar (`src/providers/crawl-read-engine.ts`); o store TS ficou no oráculo
   (`test/helpers/pipeline-oracle/crawl/`). `crawl-store-rules.ts` segue em `src/`

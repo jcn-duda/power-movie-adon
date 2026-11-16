@@ -8,6 +8,8 @@
 //!   reenfileiramento administrativo ([`super::admin`], com token)
 //! - `GET /crawl/cursor` / `POST /crawl/cursor` — cursor de descoberta
 //!   ([`super::admin`], com token)
+//! - `GET/POST /crawl/control` — pausa, liga/desliga, ritmo e teto do operador
+//!   ([`super::control`], com token)
 //! - `GET /crawl/site-snapshot` — foto do `crawl.db` para o painel
 //!   ([`super::snapshot`], com token)
 //!
@@ -87,6 +89,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/crawl/cursor",
             get(crate::sidecar::admin::cursor_get).post(crate::sidecar::admin::cursor_set),
+        )
+        .route(
+            "/crawl/control",
+            get(crate::sidecar::control::control_get).post(crate::sidecar::control::control_set),
         )
         .route(
             "/crawl/site-snapshot",

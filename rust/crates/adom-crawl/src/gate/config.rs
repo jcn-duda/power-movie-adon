@@ -36,6 +36,9 @@ pub struct GateExecutorConfig {
     /// MESMA cadeia do `store_admin`. Token vazio = ponte inativa (fail-open).
     pub flare_admin_url: String,
     pub flare_admin_token: String,
+    /// Controle do operador (`motor::control`): BLUDV pausado ou desligado
+    /// no painel não paga portão. `None` = sem controle (testes).
+    pub control: Option<std::sync::Arc<crate::motor::control::CrawlControl>>,
 }
 
 impl Default for GateExecutorConfig {
@@ -56,6 +59,7 @@ impl Default for GateExecutorConfig {
             // `from_motor` é quem preenche do ambiente em produção.
             flare_admin_url: DEFAULT_ADMIN_URL.to_string(),
             flare_admin_token: String::new(),
+            control: None,
         }
     }
 }

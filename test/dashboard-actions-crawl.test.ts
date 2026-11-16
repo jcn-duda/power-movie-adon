@@ -86,31 +86,94 @@ const post = (body: Record<string, unknown>) =>
     body,
   });
 
-test('crawl-pause alterna a pausa manual', async () => {
-  const paused = await post({ action: 'crawl-pause', paused: true });
-  assert.equal(paused.status, 200);
-  assert.equal(paused.json.paused, true);
-  const resumed = await post({ action: 'crawl-pause', paused: false });
-  assert.equal(resumed.json.paused, false);
+/** Sidecar falso do controle: ecoa o estado como o real (`/crawl/control`). */
+const controlReply = (body: Record<string, unknown>): FakeReply => ({
+  body: {
+    ok: true,
+    control: { enabled: body.enabled !== false, paused: body.paused === true, sites: {} },
+    pagesThisHour: {},
+  },
 });
 
-test('crawl-config-get/set/reset com validação do schema', async () => {
-  const get = await post({ action: 'crawl-config-get' });
-  assert.equal(get.status, 200);
-  assert.ok(Array.isArray(get.json.config.schema));
+test('crawl-pause chega ao sidecar e alterna a pausa', async () => {
+  await withFakeSidecar(controlReply, async (calls) => {
+    const paused = await post({ action: 'crawl-pause', paused: true });
+    assert.equal(paused.status, 200);
+    assert.equal(paused.json.paused, true);
+    const resumed = await post({ action: 'crawl-pause', paused: false });
+    assert.equal(resumed.json.paused, false);
+    assert.deepEqual(calls.map((c) => [c.path, c.paused]), [['/crawl/control', true], ['/crawl/control', false]]);
+    assert.equal(calls[0].token, TOKEN, 'mesmo token do diagnóstico');
+  });
+});
 
-  const bad = await post({ action: 'crawl-config-set', patch: { nope: 1 } });
-  assert.equal(bad.status, 400);
-  assert.equal(bad.json.error, 'validation_error');
+test('crawl-pause com o sidecar fora responde 502 e não finge pausar', async () => {
+  const savedPort = config.crawl.sidecarPort;
+  config.crawl.sidecarPort = 1; // ninguém escuta
+  try {
+    const res = await post({ action: 'crawl-pause', paused: true });
+    assert.equal(res.status, 502);
+    assert.equal(res.json.error, 'internal_error');
+    assert.equal(crawler.status().globalPaused, false, 'sem o sidecar a pausa não vale');
+  } finally {
+    config.crawl.sidecarPort = savedPort;
+  }
+});
 
-  const set = await post({ action: 'crawl-config-set', patch: { enabled: true, delayMs: 700 } });
-  assert.equal(set.status, 200);
-  assert.equal(set.json.effective.enabled, true);
-  assert.equal(set.json.effective.delayMs, 700);
+test('crawl-site-pause vai ao sidecar; site recusado por ele é 400', async () => {
+  await withFakeSidecar(
+    (body) => (body.site === 'mico' ? controlReply(body) : { status: 400, body: { ok: false, error: 'site desconhecido: x' } }),
+    async (calls) => {
+      const ok = await post({ action: 'crawl-site-pause', site: 'mico', paused: true });
+      assert.equal(ok.status, 200);
+      assert.deepEqual([calls[0].path, calls[0].site, calls[0].paused], ['/crawl/control', 'mico', true]);
+      const bad = await post({ action: 'crawl-site-pause', site: 'x', paused: true });
+      assert.equal(bad.status, 400);
+      assert.equal(bad.json.error, 'validation_error');
+    },
+  );
+});
 
-  const reset = await post({ action: 'crawl-config-reset', confirm: true });
-  assert.equal(reset.status, 200);
-  assert.equal(reset.json.effective.enabled, false, 'volta ao default do .env');
+test('crawl-config-get/set/reset com validação do schema e repasse ao sidecar', async () => {
+  await withFakeSidecar(controlReply, async (calls) => {
+    const get = await post({ action: 'crawl-config-get' });
+    assert.equal(get.status, 200);
+    assert.ok(Array.isArray(get.json.config.schema));
+
+    const bad = await post({ action: 'crawl-config-set', patch: { nope: 1 } });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.json.error, 'validation_error');
+    assert.equal(calls.length, 0, 'pedido inválido não chega ao sidecar');
+
+    const set = await post({ action: 'crawl-config-set', patch: { enabled: true, delayMs: 700 } });
+    assert.equal(set.status, 200);
+    assert.equal(set.json.effective.enabled, true);
+    assert.equal(set.json.effective.delayMs, 700);
+    assert.deepEqual([calls[0].enabled, calls[0].delayMs], [true, 700]);
+
+    const onlyLocal = await post({ action: 'crawl-config-set', patch: { dryRun: false } });
+    assert.equal(onlyLocal.status, 200);
+    assert.equal(calls.length, 1, 'dryRun não existe no sidecar: nada a repassar');
+
+    const reset = await post({ action: 'crawl-config-reset', confirm: true });
+    assert.equal(reset.status, 200);
+    assert.equal(reset.json.effective.enabled, false, 'volta ao default do .env');
+    assert.equal(calls[1].reset, true);
+  });
+});
+
+test('painel mostra o controle do sidecar: todos os sites dele, pausa e ligado', async () => {
+  const { _setControlForTest } = await import('../src/providers/crawl-control-native.js');
+  _setControlForTest({
+    control: { enabled: true, paused: true, sites: { mico: { paused: true, maxPerHour: 40 } } },
+    pagesThisHour: { mico: 7 },
+    at: Date.now(),
+  });
+  const status = crawler.status() as any;
+  assert.equal(status.enabled, true, 'CRAWL_ENABLED=false do .env não manda: o sidecar raspa');
+  assert.equal(status.globalPaused, true);
+  assert.ok(status.sitesConfigured.includes('mico') && status.sitesConfigured.includes('nerdfilmes'),
+    'os sites do sidecar aparecem mesmo fora do CRAWL_SITES');
 });
 
 test('crawl-simulate sem adaptador TS responde sem-adaptador e não toca a fila', async () => {

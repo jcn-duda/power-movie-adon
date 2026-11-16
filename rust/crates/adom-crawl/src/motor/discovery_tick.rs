@@ -280,7 +280,7 @@ impl CrawlMotor {
             let site = sites[idx];
             // Site de molho (Fase 0) não descobre: se as PÁGINAS estão em
             // espera, a rodada também seria martelada nele.
-            if self.config.site_clock.until(site) > now {
+            if self.config.site_clock.until(site) > now || self.control.site_off(site) {
                 continue;
             }
             if clock.get(site).copied().unwrap_or(0) <= now {
