@@ -387,3 +387,7 @@ async fn ready_entrega_o_hint_e_o_pendente_mantem_o_dele() {
         "o pendente não pode perder o fato do PACK"
     );
 }
+
+// Leitura em lote do `load` (uma trava): arquivo próprio pela catraca.
+#[path = "recheck_load_tests.rs"]
+mod load_tests;

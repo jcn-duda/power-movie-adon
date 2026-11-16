@@ -115,7 +115,9 @@ pub(super) fn write(
 /// Uso da conta para o gate: memo fresco ou uma pergunta ao serviço.
 ///
 /// `None` = sem medição (gate fail-open, como `account_is_blocked(None, …)`).
-pub(super) async fn probe(
+/// Consumido pelo enqueue E pelo dreno (`enqueue_drain`): a mesma janela do KV
+/// evita que os dois passos paguem a mesma pergunta dentro dela.
+pub(in crate::autofetch) async fn probe(
     kv: &NativeKv,
     adapter: &str,
     account: &str,
@@ -132,6 +134,23 @@ pub(super) async fn probe(
     };
     write(kv, adapter, account, evidence.used, refresh_ms, now_ms);
     evidence.used
+}
+
+/// Uso da conta para o gate do lote: `pauseAt == 0` desliga a sonda (sem
+/// medição, o gate é fail-open); acima disso, memo fresco ou uma pergunta.
+/// O dreno (`enqueue_drain`) faz a mesma leitura pela janela compartilhada.
+pub(in crate::autofetch) async fn gate_usage(
+    kv: &NativeKv,
+    adapter: &str,
+    account: &str,
+    debrid: &dyn AutofetchDebrid<Error = String>,
+    live: &super::gates::LivePolicy,
+    now_ms: i64,
+) -> Option<u64> {
+    if live.pause_at == 0 {
+        return None;
+    }
+    probe(kv, adapter, account, debrid, live.pause_refresh_ms, now_ms).await
 }
 
 #[cfg(test)]

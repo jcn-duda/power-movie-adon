@@ -36,8 +36,9 @@ use serde_json::Value;
 
 use super::enqueue_items::{candidate_of, parse_items, season_hints};
 use super::Policy;
+// Memo compartilhado com o dreno (`enqueue_drain`): a janela do KV vale para os dois passos.
 #[path = "enqueue_account.rs"]
-mod account;
+pub(in crate::autofetch) mod account;
 #[path = "enqueue_holds.rs"]
 mod holds;
 pub(super) use holds::Holds;
@@ -50,11 +51,10 @@ mod job;
 pub(crate) use job::Job;
 #[path = "enqueue_obra.rs"]
 pub(super) mod obra;
-#[path = "enqueue_policy.rs"]
-pub(crate) mod user_policy;
-
 #[path = "enqueue_pick.rs"]
 mod pick;
+#[path = "enqueue_policy.rs"]
+pub(crate) mod user_policy;
 
 #[path = "enqueue_retention.rs"]
 pub(super) mod retention;
@@ -93,7 +93,8 @@ pub(crate) async fn run(
         if stripped {
             QueueV3::new(kv).drop_queue(&search_key)?; // fila velha só de `seeds`
         }
-        return Ok(Report::refused(&search_key, ["empty-batch", "dubbed-only"][usize::from(stripped)]));
+        let reason = ["empty-batch", "dubbed-only"][usize::from(stripped)];
+        return Ok(Report::refused(&search_key, reason));
     }
     // Fatos do PACK: o status do debrid nunca traz título, então eles precisam
     // sair daqui com o lote do recheck.
@@ -161,18 +162,11 @@ pub(crate) async fn run(
         .map(|hash| hash.to_ascii_lowercase())
         .collect();
 
-    // 3. Fatos da cascata: orçamento, sonda da conta, cache por hash e `adrm`
-    // (invariante 6). O teto por OBRA tem portão próprio no passo 4 — medir os
-    // dois aqui daria duas réguas para a mesma pergunta.
-    //
-    // A sonda de conta é MEMOIZADA no KV por `autoFetchPauseRefreshMs`
-    // ([`account::probe`]): sem o memo o worker pergunta a conta a cada lote,
-    // enquanto o TS só a cada janela de `accountGateMemo`.
-    let account_used = if live.pause_at > 0 {
-        account::probe(kv, adapter, account, debrid, live.pause_refresh_ms, now_ms).await
-    } else {
-        None
-    };
+    // 3. Fatos da cascata: orçamento, sonda da conta (memo KV de
+    // `autoFetchPauseRefreshMs`, ver `account::gate_usage`), cache por hash e
+    // `adrm` (invariante 6). O teto por OBRA tem portão próprio no passo 4 —
+    // medir os dois aqui daria duas réguas para a mesma pergunta.
+    let account_used = account::gate_usage(kv, adapter, account, debrid, &live, now_ms).await;
     let measured = match facts::measure(facts::Measure {
         kv,
         adapter,
@@ -234,7 +228,8 @@ pub(crate) async fn run(
     // enqueue de verdade. A config do teto sai uma vez por lote das mesmas
     // réguas do TS.
     let obra_cfg = obra::live_config(&live);
-    let mut quality = user_policy::QualityGate::load(kv, Some(&user), (adapter, account), &search_key, now_ms)?;
+    let scope = (adapter, account);
+    let mut quality = user_policy::QualityGate::load(kv, Some(&user), scope, &search_key, now_ms)?;
     let mut queue_out = Vec::with_capacity(items.len());
     for attempt in &decision.attempts {
         let Some(item) = by_hash.get(attempt.info_hash.as_str()) else {
@@ -380,10 +375,17 @@ pub(crate) async fn run(
     }
 
     // 5. Fila: `attempts ∪ deferred`, escritor único ([`report::write_queue`]).
-    let scope = (adapter, account);
-    let written = report::write_queue(&queue, &live, policy, &search_key, &queue_out, scope, now_ms);
-    report.queue_len = if live.queue_enabled { queue_out.len() } else { 0 };
-    if let Err(err) = written {
+    let wrote = report::write_queue(
+        &queue,
+        &live,
+        policy,
+        &search_key,
+        &queue_out,
+        scope,
+        now_ms,
+    );
+    report.queue_len = usize::from(live.queue_enabled) * queue_out.len();
+    if let Err(err) = wrote {
         release_all(holds, kv, account, &hashes, &report.enqueued);
         return Err(err);
     }

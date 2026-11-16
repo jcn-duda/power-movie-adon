@@ -11,6 +11,14 @@ use std::sync::{Mutex, PoisonError};
 
 use tokio::sync::Notify;
 
+/// Contadores VIVOS medidos no fim de uma passagem (fila e lotes no KV). O
+/// `status()` do painel lê daqui — nunca SQLite.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct LiveCounts {
+    pub(crate) queue_depth: usize,
+    pub(crate) lots: usize,
+}
+
 /// Retrato dos contadores para o painel (`GET /autofetch`).
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Snapshot {
@@ -18,6 +26,9 @@ pub(crate) struct Snapshot {
     pub(crate) processed: u64,
     pub(crate) skips: BTreeMap<String, usize>,
     pub(crate) last_error: Option<String>,
+    /// Contadores vivos da última passagem; `None` = sem laço (prepared/stub),
+    /// e o status cai na foto do boot (`Hydrated`).
+    pub(crate) live_counts: Option<LiveCounts>,
 }
 
 /// Regras vivas em RAM: pausa/intervalo que o laço lê a cada volta, mais os
@@ -29,6 +40,7 @@ pub(crate) struct Control {
     processed: AtomicU64,
     last_error: Mutex<Option<String>>,
     skips: Mutex<BTreeMap<String, usize>>,
+    live_counts: Mutex<Option<LiveCounts>>,
     notify: Notify,
 }
 
@@ -41,6 +53,7 @@ impl Control {
             processed: AtomicU64::new(0),
             last_error: Mutex::new(None),
             skips: Mutex::new(BTreeMap::new()),
+            live_counts: Mutex::new(None),
             notify: Notify::new(),
         }
     }
@@ -99,6 +112,15 @@ impl Control {
         }
     }
 
+    /// Contadores vivos do painel: o laço publica a fila e os lotes medidos no
+    /// fim de CADA passagem — a foto do boot não é o estado atual.
+    pub(crate) fn publish_counts(&self, queue_depth: usize, lots: usize) {
+        *self
+            .live_counts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(LiveCounts { queue_depth, lots });
+    }
+
     pub(crate) fn snapshot(&self) -> Snapshot {
         Snapshot {
             inflight: self.inflight(),
@@ -113,6 +135,10 @@ impl Control {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .clone(),
+            live_counts: *self
+                .live_counts
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
         }
     }
 }

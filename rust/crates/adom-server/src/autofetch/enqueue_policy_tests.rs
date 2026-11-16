@@ -27,8 +27,13 @@ fn hash_of(n: u32) -> String {
 fn kv() -> NativeKv {
     let kv = NativeKv::open_memory().unwrap();
     // Config PINADA: os testes de env escrevem no processo em paralelo.
-    kv.put_json("cfg:v1:autofetch", &json!({ "autoFetchMax": 3 }), 600, now_ms())
-        .unwrap();
+    kv.put_json(
+        "cfg:v1:autofetch",
+        &json!({ "autoFetchMax": 3 }),
+        600,
+        now_ms(),
+    )
+    .unwrap();
     kv
 }
 
@@ -94,13 +99,27 @@ async fn dubbed_only_tira_o_pool_seeds_antes_do_hold() {
     let (kv, now, holds) = (kv(), now_ms(), Holds::default());
     let debrid = FakeDebrid::accepting();
     let (one, two) = (hash_of(1), hash_of(2));
-    let items = [(one.as_str(), "2160p", false), (two.as_str(), "2160p", false)];
-    let report = run(&kv, Policy::fixture(), &holds, false, &debrid, &job(SCOPE, payload(&items, caps("2160p", 2))), now)
-        .await
-        .unwrap();
+    let items = [
+        (one.as_str(), "2160p", false),
+        (two.as_str(), "2160p", false),
+    ];
+    let report = run(
+        &kv,
+        Policy::fixture(),
+        &holds,
+        false,
+        &debrid,
+        &job(SCOPE, payload(&items, caps("2160p", 2))),
+        now,
+    )
+    .await
+    .unwrap();
     assert_eq!(report.refused, Some("dubbed-only"));
     assert!(debrid.accepted().is_empty());
-    assert!(debrid.released.lock().unwrap().is_empty(), "nada foi checado");
+    assert!(
+        debrid.released.lock().unwrap().is_empty(),
+        "nada foi checado"
+    );
     assert!(queued(&kv, now).is_empty());
     assert_eq!(holds.len(), 0);
 }
@@ -110,10 +129,19 @@ async fn teto_por_qualidade_adia_o_terceiro_dublado_sem_descartar() {
     let (kv, now, holds) = (kv(), now_ms(), Holds::default());
     let debrid = FakeDebrid::accepting();
     let hashes: Vec<String> = (1..=3).map(hash_of).collect();
-    let items: Vec<(&str, &str, bool)> = hashes.iter().map(|h| (h.as_str(), "1080p", true)).collect();
-    let report = run(&kv, Policy::fixture(), &holds, false, &debrid, &job(SCOPE, payload(&items, caps("1080p", 2))), now)
-        .await
-        .unwrap();
+    let items: Vec<(&str, &str, bool)> =
+        hashes.iter().map(|h| (h.as_str(), "1080p", true)).collect();
+    let report = run(
+        &kv,
+        Policy::fixture(),
+        &holds,
+        false,
+        &debrid,
+        &job(SCOPE, payload(&items, caps("1080p", 2))),
+        now,
+    )
+    .await
+    .unwrap();
     assert_eq!(debrid.accepted(), vec![hash_of(1), hash_of(2)]);
     assert_eq!(report.skips.get("quality-cap"), Some(&1));
     // O excedente fica na fila: sobe quando um dos dois morrer.
@@ -125,11 +153,23 @@ async fn teto_por_qualidade_adia_o_terceiro_dublado_sem_descartar() {
 
 /// Lote do recheck com `hashes` em voo na qualidade `quality` e o teto `cap`.
 fn lot_in_flight(kv: &NativeKv, hashes: &[String], quality: &str, cap: i64, now: i64) {
-    let enqueued: Vec<(String, Option<String>)> = hashes.iter().map(|h| (h.clone(), None)).collect();
-    recheck::schedule(kv, Policy::fixture(), SEARCH, (ADAPTER, ACCOUNT), &enqueued, &BTreeMap::new(), now)
-        .unwrap();
+    let enqueued: Vec<(String, Option<String>)> =
+        hashes.iter().map(|h| (h.clone(), None)).collect();
+    recheck::schedule(
+        kv,
+        Policy::fixture(),
+        SEARCH,
+        (ADAPTER, ACCOUNT),
+        &enqueued,
+        &BTreeMap::new(),
+        now,
+    )
+    .unwrap();
     let user = UserPolicy::from_payload(&payload(&[], caps(quality, cap)));
-    let accepted: BTreeMap<String, String> = hashes.iter().map(|h| (h.clone(), quality.to_string())).collect();
+    let accepted: BTreeMap<String, String> = hashes
+        .iter()
+        .map(|h| (h.clone(), quality.to_string()))
+        .collect();
     record(kv, Policy::fixture(), SEARCH, &user, &accepted, now).unwrap();
 }
 
@@ -141,14 +181,43 @@ async fn busca_seguinte_conta_o_que_ja_esta_em_voo_e_morto_libera_a_vaga() {
     let items = [(three.as_str(), "1080p", true)];
     let debrid = FakeDebrid::accepting();
     let job = job(SCOPE, payload(&items, caps("1080p", 2)));
-    let report = run(&kv, Policy::fixture(), &Holds::default(), false, &debrid, &job, now).await.unwrap();
-    assert!(debrid.accepted().is_empty(), "dois em voo: o terceiro espera");
+    let report = run(
+        &kv,
+        Policy::fixture(),
+        &Holds::default(),
+        false,
+        &debrid,
+        &job,
+        now,
+    )
+    .await
+    .unwrap();
+    assert!(
+        debrid.accepted().is_empty(),
+        "dois em voo: o terceiro espera"
+    );
     assert_eq!(report.skips.get("quality-cap"), Some(&1));
 
-    QueueV3::new(&kv).mark_dead(ADAPTER, ACCOUNT, &hash_of(1), 600, now).unwrap();
+    QueueV3::new(&kv)
+        .mark_dead(ADAPTER, ACCOUNT, &hash_of(1), 600, now)
+        .unwrap();
     let debrid = FakeDebrid::accepting();
-    run(&kv, Policy::fixture(), &Holds::default(), false, &debrid, &job, now).await.unwrap();
-    assert_eq!(debrid.accepted(), vec![hash_of(3)], "o morto devolveu a vaga");
+    run(
+        &kv,
+        Policy::fixture(),
+        &Holds::default(),
+        false,
+        &debrid,
+        &job,
+        now,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        debrid.accepted(),
+        vec![hash_of(3)],
+        "o morto devolveu a vaga"
+    );
 }
 
 #[test]
@@ -159,9 +228,18 @@ fn faixa_pronta_fica_coberta_para_o_dreno() {
     super::note_ready(&mut lot, &hash_of(1));
     recheck::write(&kv, &lot, Policy::fixture(), now).unwrap();
     let gate = QualityGate::load(&kv, None, (ADAPTER, ACCOUNT), SEARCH, now).unwrap();
-    assert!(gate.full(Some("br"), Some("720p")), "720p pronto: não dispara outro");
-    assert!(!gate.full(Some("br"), Some("1080p")), "sem teto configurado não barra");
-    assert!(!gate.full(Some("any"), Some("720p")), "só o pool br tem teto");
+    assert!(
+        gate.full(Some("br"), Some("720p")),
+        "720p pronto: não dispara outro"
+    );
+    assert!(
+        !gate.full(Some("br"), Some("1080p")),
+        "sem teto configurado não barra"
+    );
+    assert!(
+        !gate.full(Some("any"), Some("720p")),
+        "só o pool br tem teto"
+    );
 }
 
 fn queued_br(kv: &NativeKv, hash: &str, quality: &str, now: i64) {
@@ -186,20 +264,50 @@ async fn dreno_respeita_o_teto_e_poe_o_iniciado_no_recheck() {
     let scope = format!("{ADAPTER}:{ACCOUNT}");
     let debrid = FakeDebrid::accepting();
     let holds = Holds::default();
-    let report = drain_one(&kv, Policy::fixture(), &holds, false, &debrid, &scope, SEARCH, now)
-        .await
-        .unwrap();
+    let report = drain_one(
+        &kv,
+        Policy::fixture(),
+        &holds,
+        false,
+        &debrid,
+        &scope,
+        SEARCH,
+        now,
+    )
+    .await
+    .unwrap();
     assert!(report.started.is_none(), "1080p cheio: o dreno não dispara");
-    assert_eq!(queued(&kv, now), vec![hash_of(2)], "o adiado continua na fila");
+    assert_eq!(
+        queued(&kv, now),
+        vec![hash_of(2)],
+        "o adiado continua na fila"
+    );
 
-    QueueV3::new(&kv).mark_dead(ADAPTER, ACCOUNT, &hash_of(1), 600, now).unwrap();
-    let report = drain_one(&kv, Policy::fixture(), &holds, false, &debrid, &scope, SEARCH, now)
-        .await
+    QueueV3::new(&kv)
+        .mark_dead(ADAPTER, ACCOUNT, &hash_of(1), 600, now)
         .unwrap();
+    let report = drain_one(
+        &kv,
+        Policy::fixture(),
+        &holds,
+        false,
+        &debrid,
+        &scope,
+        SEARCH,
+        now,
+    )
+    .await
+    .unwrap();
     assert_eq!(report.started, Some(hash_of(2)));
     let lot = recheck::read(&kv, SEARCH, now).unwrap().unwrap();
-    assert!(lot.info_hashes.contains(&hash_of(2)), "drenado entra no recheck");
-    assert_eq!(lot.qualities.get(&hash_of(2)).map(String::as_str), Some("1080p"));
+    assert!(
+        lot.info_hashes.contains(&hash_of(2)),
+        "drenado entra no recheck"
+    );
+    assert_eq!(
+        lot.qualities.get(&hash_of(2)).map(String::as_str),
+        Some("1080p")
+    );
 }
 
 #[test]
@@ -212,7 +320,8 @@ fn boot_solta_so_o_hold_orfao_do_chupim() {
         .set_marker(ADAPTER, ACCOUNT, &hash_of(2), &json!(1), 600, now)
         .unwrap();
     let admin = format!("adhold:v1:{ACCOUNT}:{}", hash_of(3)); // API admin: sem marca
-    kv.put_json(&admin, &json!({ "at": now }), 600, now).unwrap();
+    kv.put_json(&admin, &json!({ "at": now }), 600, now)
+        .unwrap();
 
     let released = super::super::retention::release_orphans(&kv, now).unwrap();
     assert_eq!(released, 1);

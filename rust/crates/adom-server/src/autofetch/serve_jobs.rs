@@ -112,7 +112,7 @@ impl<'a> Engine<'a> {
     /// do processo — e o toggle vem do overlay (`live > `.env` > default`).
     ///
     /// Relido a cada job, nunca herdado do boot: o `Engine` carrega o boletim da
-    /// passagem em `self.live` (ver `serve::engine_for_pass`).
+    /// passagem em `self.live` (ver `engine_for_pass` abaixo).
     pub(super) fn probe_config(
         &self,
         paused: bool,
@@ -184,7 +184,14 @@ impl<'a> Engine<'a> {
         )
         .and_then(|_| {
             let (kv, key) = (self.kv, &report.search_key);
-            enqueue::user_policy::record(kv, self.policy, key, &report.user, &report.qualities, now_ms)
+            enqueue::user_policy::record(
+                kv,
+                self.policy,
+                key,
+                &report.user,
+                &report.qualities,
+                now_ms,
+            )
         }) {
             Ok(()) => pass.scheduled += 1,
             Err(err) => pass.errors.push(err),
@@ -295,4 +302,23 @@ fn hashes_of_ready(
         .filter(|(_, hint)| ready.contains(hint))
         .map(|(hash, _)| hash.clone())
         .collect()
+}
+
+/// `Engine` de UMA passagem: relê `cfg:v1:autofetch` e aplica sobre a `Policy`
+/// base (**live > base**).
+///
+/// O laço chama isto a cada volta — nada de config herdada do boot: o painel
+/// vale na passagem seguinte ao clique. A falha de leitura mantém a base e vira
+/// erro da passagem, nunca um `return` que pararia o worker.
+pub(super) fn engine_for_pass<'a>(
+    kv: &'a super::NativeKv,
+    base: &super::Policy,
+    vault: Option<&'a super::Vault>,
+    debrid: &'a super::DebridFactory,
+    control: &'a super::Control,
+    harvest: Option<&'a super::HarvestHandle>,
+    now_ms: i64,
+) -> Engine<'a> {
+    let (policy, live, error) = super::live::LiveOverlay::pass(kv, base, now_ms);
+    Engine::new(kv, policy, vault, debrid, control, harvest).with_live(live, error)
 }

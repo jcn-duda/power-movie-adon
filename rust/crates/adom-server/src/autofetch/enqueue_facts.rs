@@ -74,7 +74,12 @@ pub(super) fn measure(input: Measure<'_>) -> Result<Measured, String> {
         .collect();
     // Parada do pool `seeds` (`decideSeedsStop`): com dublado ou qualquer
     // coisa do lote já em cache o pool de baixo não corre.
-    let cached_count = input.items.iter().filter(in_batch).filter(is_cached).count();
+    let cached_count = input
+        .items
+        .iter()
+        .filter(in_batch)
+        .filter(is_cached)
+        .count();
     facts.seeds_stop = super::user_policy::seeds_stop(
         facts.has_cached_br_dubbed || facts.has_cached_any_dubbed,
         cached_count,

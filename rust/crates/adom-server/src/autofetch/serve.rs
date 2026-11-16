@@ -123,8 +123,8 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// Boletim ao vivo desta passagem (ver [`engine_for_pass`]). Sem esta fiação
-    /// o `Engine` roda só com o `.env` do processo.
+    /// Boletim ao vivo desta passagem (ver [`jobs::engine_for_pass`]). Sem esta
+    /// fiação o `Engine` roda só com o `.env` do processo.
     fn with_live(mut self, live: live::LiveOverlay, error: Option<String>) -> Self {
         self.live = live;
         self.live_error = error;
@@ -156,6 +156,12 @@ impl<'a> Engine<'a> {
         if let Some(vault) = self.vault {
             pass.forgotten_keys = vault.sweep(now_ms);
         }
+        // Contadores vivos do painel: fila e lotes medidos no fim da passagem —
+        // o `status()` não toca SQLite, e a foto do boot não é o estado atual.
+        self.control.publish_counts(
+            super::worker::count_prefix(self.kv, super::QUEUE_PREFIX, now_ms),
+            super::worker::count_prefix(self.kv, super::LOT_PREFIX, now_ms),
+        );
         self.control.leave();
         self.control.record(pass.jobs, &pass.skips, &pass.errors);
         pass
@@ -301,25 +307,6 @@ impl<'a> Engine<'a> {
     }
 }
 
-/// `Engine` de UMA passagem: relê `cfg:v1:autofetch` e aplica sobre a `Policy`
-/// base (**live > base**).
-///
-/// O laço chama isto a cada volta — nada de config herdada do boot: o painel
-/// vale na passagem seguinte ao clique. A falha de leitura mantém a base e vira
-/// erro da passagem, nunca um `return` que pararia o worker.
-fn engine_for_pass<'a>(
-    kv: &'a NativeKv,
-    base: &Policy,
-    vault: Option<&'a Vault>,
-    debrid: &'a DebridFactory,
-    control: &'a Control,
-    harvest: Option<&'a HarvestHandle>,
-    now_ms: i64,
-) -> Engine<'a> {
-    let (policy, live, error) = live::LiveOverlay::pass(kv, base, now_ms);
-    Engine::new(kv, policy, vault, debrid, control, harvest).with_live(live, error)
-}
-
 /// Sobe a thread do laço (`current_thread`) e devolve o controle ao chamador.
 pub(crate) fn spawn(
     kv: Arc<NativeKv>,
@@ -355,9 +342,9 @@ pub(crate) fn spawn(
                     }
                     // O colhedor nasce DEPOIS do laço (`proxy::run`): o slot é
                     // lido a cada passagem, nunca fixado no boot. A config ao
-                    // vivo segue a mesma régua (`engine_for_pass`).
+                    // vivo segue a mesma régua (`jobs::engine_for_pass`).
                     let now_ms = adom_sources::now_ms();
-                    let engine = engine_for_pass(
+                    let engine = jobs::engine_for_pass(
                         &kv,
                         &policy,
                         vault.as_deref(),
@@ -395,3 +382,8 @@ mod tests;
 #[cfg(test)]
 #[path = "serve_live_tests.rs"]
 mod live_tests;
+
+// Contadores vivos do painel (queueDepth/lots): arquivo próprio pela catraca.
+#[cfg(test)]
+#[path = "serve_counts_tests.rs"]
+mod counts_tests;

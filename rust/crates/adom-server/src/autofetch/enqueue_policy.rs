@@ -150,16 +150,36 @@ impl QualityGate {
 
     /// Aceite de um BR: ocupa a vaga da qualidade e vai para o lote.
     pub(crate) fn accept(&mut self, attempt: &CascadeAttempt, out: &mut BTreeMap<String, String>) {
-        self.take(attempt.pool.as_str(), &attempt.info_hash, attempt.quality.as_deref(), out);
+        self.take(
+            attempt.pool.as_str(),
+            &attempt.info_hash,
+            attempt.quality.as_deref(),
+            out,
+        );
     }
 
     /// Mesmo aceite, pelo candidato da fila (dreno).
-    pub(crate) fn accept_queued(&mut self, candidate: &QueueCandidate, out: &mut BTreeMap<String, String>) {
+    pub(crate) fn accept_queued(
+        &mut self,
+        candidate: &QueueCandidate,
+        out: &mut BTreeMap<String, String>,
+    ) {
         let pool = candidate.pool.as_deref().unwrap_or_default();
-        self.take(pool, &candidate.info_hash, candidate.quality.as_deref(), out);
+        self.take(
+            pool,
+            &candidate.info_hash,
+            candidate.quality.as_deref(),
+            out,
+        );
     }
 
-    fn take(&mut self, pool: &str, hash: &str, quality: Option<&str>, out: &mut BTreeMap<String, String>) {
+    fn take(
+        &mut self,
+        pool: &str,
+        hash: &str,
+        quality: Option<&str>,
+        out: &mut BTreeMap<String, String>,
+    ) {
         let Some(quality) = quality.filter(|_| pool == CascadePool::Br.as_str()) else {
             return;
         };
@@ -197,7 +217,8 @@ pub(crate) fn record(
     };
     lot.policy = user.clone();
     for (hash, quality) in accepted {
-        lot.qualities.insert(hash.to_ascii_lowercase(), quality.clone());
+        lot.qualities
+            .insert(hash.to_ascii_lowercase(), quality.clone());
     }
     recheck::write(kv, &lot, policy, now_ms)
 }

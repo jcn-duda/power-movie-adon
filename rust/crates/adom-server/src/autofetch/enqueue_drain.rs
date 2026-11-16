@@ -38,9 +38,9 @@ pub(crate) struct DrainReport {
     pub(crate) remaining: usize,
 }
 
-/// Dreno com os fatos desta leva: conta/orçamento/cooldown ainda não são
-/// medidos (entram desbloqueados); o que barra de verdade é a pausa, a fila
-/// vazia e o obsoleto.
+/// Dreno com os fatos desta leva: conta (pelo memo KV de `pauseRefreshMs`) e
+/// orçamento SÃO medidos; o cooldown do RD ainda não é (entra desbloqueado).
+/// O que barra de verdade é a pausa, a fila vazia e o obsoleto.
 #[allow(clippy::too_many_arguments)] // um dono por eixo: KV, réguas, hold, pausa, adaptador, escopo, busca, relógio
 pub(crate) async fn drain_one(
     kv: &NativeKv,
@@ -69,15 +69,30 @@ pub(crate) async fn drain_one(
     policy.queue_depth = live_policy.queue_depth;
     let queue = QueueV3::new(kv);
     let queue_items = queue.read_queue(search_key, now_ms)?;
+    // Fila vazia encerra ANTES da sonda de conta e do orçamento: o report é o
+    // MESMO que o `drain_next` produziria (ordem dos portões: disabled →
+    // paused → empty), sem escrita na fila e sem HTTP pago à toa.
+    if queue_items.is_empty() {
+        let reason = match (search_key.is_empty(), paused) {
+            (true, _) => DrainBlock::Disabled,
+            (_, true) => DrainBlock::Paused,
+            _ => DrainBlock::Empty,
+        };
+        return Ok(DrainReport {
+            blocked: Some(block_label(reason)),
+            ..DrainReport::default()
+        });
+    }
     // Teto por qualidade e `dubbedOnly` do lote (a política do último aceite).
     let mut quality = QualityGate::load(kv, None, (adapter, account), search_key, now_ms)?;
-    let account_blocked = if live_policy.pause_at > 0 {
-        debrid.account().await.ok().is_some_and(|evidence| {
-            super::enqueue::gates::account_is_blocked(evidence.used, live_policy.pause_at)
-        })
-    } else {
-        false
-    };
+    // Conta pelo MESMO memo KV do enqueue (`account::gate_usage`): cada HTTP à
+    // conta que pode ser memo é uma pergunta paga duas vezes. Erro/None =
+    // fail-open (`account_is_blocked` sem medição não bloqueia); erro nunca vira
+    // memo.
+    let used =
+        super::enqueue::account::gate_usage(kv, adapter, account, debrid, &live_policy, now_ms)
+            .await;
+    let account_blocked = super::enqueue::gates::account_is_blocked(used, live_policy.pause_at);
     let budget_blocked = super::enqueue::gates::budget_count(kv, adapter, account, now_ms)?
         >= live_policy.hourly_limit;
     let gates = DrainGates {
@@ -138,7 +153,15 @@ pub(crate) async fn drain_one(
                 // Como o `drainNext` do TS (`lot.hashes.add`): o iniciado entra
                 // no recheck — sem isso a morte dele nunca era vista.
                 let enqueued = [(hash, started.transfer.clone())];
-                recheck::schedule(kv, policy, search_key, (adapter, account), &enqueued, &BTreeMap::new(), now_ms)?;
+                recheck::schedule(
+                    kv,
+                    policy,
+                    search_key,
+                    (adapter, account),
+                    &enqueued,
+                    &BTreeMap::new(),
+                    now_ms,
+                )?;
                 let mut accepted = BTreeMap::new();
                 quality.accept_queued(&candidate, &mut accepted);
                 record(kv, policy, search_key, quality.user(), &accepted, now_ms)?;
@@ -339,3 +362,8 @@ fn block_label(reason: DrainBlock) -> &'static str {
         DrainBlock::Refusals => "refusals",
     }
 }
+
+// Memo da conta e early-return da fila vazia: arquivo próprio pela catraca.
+#[cfg(test)]
+#[path = "enqueue_drain_tests.rs"]
+mod tests;

@@ -68,15 +68,16 @@ pub(super) fn write_queue(
     if !live.queue_enabled || live.queue_depth == 0 || out.is_empty() {
         return queue.drop_queue(search_key).map(drop);
     }
-    queue.write_queue(
-        search_key,
-        out,
-        policy.queue_ttl_seconds,
-        live.queue_depth,
-        Some(scope),
-        now_ms,
-    )
-    .map(drop)
+    queue
+        .write_queue(
+            search_key,
+            out,
+            policy.queue_ttl_seconds,
+            live.queue_depth,
+            Some(scope),
+            now_ms,
+        )
+        .map(drop)
 }
 
 /// Fim do lote, holds já soltos: o que a checagem deste lote pôs na conta e não

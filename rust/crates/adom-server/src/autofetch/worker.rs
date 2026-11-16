@@ -71,8 +71,8 @@ pub(crate) struct AutofetchStatus {
     pub(crate) vault_accounts: usize,
 }
 
-/// Retrato da fila lido UMA vez no boot. O ciclo atualiza os contadores, não
-/// esta foto: `queueDepth`/`lots` continuam sendo o que o KV tinha ao subir.
+/// Foto do boot, FALLBACK do status: sem laço (prepared/stub) o painel vê esta
+/// foto; com laço, valem os contadores vivos que a passagem publica no Control.
 #[derive(Clone, Copy, Debug, Default)]
 struct Hydrated {
     queue_depth: usize,
@@ -123,10 +123,10 @@ impl AutofetchHandle {
         vault: Option<Arc<Vault>>,
         debrid: Option<DebridFactory>,
     ) -> Self {
-        // O laço RELÊ o painel a cada passagem (`serve::engine_for_pass`), então a
-        // base que ele recebe é a env PURA. Passar a foto do boot aqui faria uma
-        // chave REMOVIDA do painel (`reset`) continuar valendo até o restart. O
-        // overlay ainda é lido agora porque ele soma a PAUSA ao `Control`.
+        // O laço RELÊ o painel a cada passagem (`serve::jobs::engine_for_pass`),
+        // então a base que ele recebe é a env PURA. Passar a foto do boot aqui
+        // faria uma chave REMOVIDA do painel (`reset`) continuar valendo até o
+        // restart. O overlay ainda é lido agora porque soma a PAUSA ao `Control`.
         let (config, _overlay) = load_effective(&kv);
         let hydrated = hydrate(&kv);
         let base = *policy;
@@ -195,16 +195,18 @@ impl AutofetchHandle {
         }
     }
 
-    /// Foto em memória: o `GET /autofetch` não toca SQLite.
+    /// Foto em memória: o `GET /autofetch` não toca SQLite. `queueDepth`/`lots`
+    /// vêm dos contadores vivos da última passagem; sem laço, da foto do boot.
     pub(crate) fn status(&self) -> AutofetchStatus {
         let config = self.config();
         let snapshot = self.inner.snapshot();
+        let live = snapshot.live_counts;
         AutofetchStatus {
             enabled: self.inner.enabled,
             phase: phase_of(self.inner.enabled, config.paused),
             paused: config.paused,
-            queue_depth: self.inner.hydrated.queue_depth,
-            lots: self.inner.hydrated.lots,
+            queue_depth: live.map_or(self.inner.hydrated.queue_depth, |c| c.queue_depth),
+            lots: live.map_or(self.inner.hydrated.lots, |c| c.lots),
             inflight: snapshot.inflight,
             interval_ms: config.interval_ms,
             processed: snapshot.processed,
@@ -327,8 +329,8 @@ fn hydrate(kv: &NativeKv) -> Hydrated {
 
 /// Conta chaves vivas pelo prefixo com o `keys_matching` do store (o mesmo
 /// `kvKeys` do Node), sem abrir SQLite à mão. A varredura poda as expiradas;
-/// nenhuma linha é criada.
-fn count_prefix(kv: &NativeKv, prefix: &str, now_ms: i64) -> usize {
+/// nenhuma linha é criada. O laço também usa no fim de cada passagem.
+pub(super) fn count_prefix(kv: &NativeKv, prefix: &str, now_ms: i64) -> usize {
     match kv.keys_matching(prefix, now_ms) {
         Ok(keys) => keys.len(),
         Err(err) => {

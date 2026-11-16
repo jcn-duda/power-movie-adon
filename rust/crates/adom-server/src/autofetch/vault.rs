@@ -192,7 +192,14 @@ impl Vault {
         let Some(kv) = self.store() else {
             return;
         };
-        if vault_store::persist(&kv, &self.resolve_secret, scope, api_key, expires_at, now_ms) {
+        if vault_store::persist(
+            &kv,
+            &self.resolve_secret,
+            scope,
+            api_key,
+            expires_at,
+            now_ms,
+        ) {
             if let Some(entry) = self.lock().entries.get_mut(scope) {
                 entry.persisted_exp = expires_at;
             }

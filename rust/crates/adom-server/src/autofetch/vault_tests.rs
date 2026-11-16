@@ -173,7 +173,10 @@ fn sem_resolve_secret_nada_vai_ao_kv() {
         .get_json(&super::vault_store::key_for(&scope), now)
         .unwrap()
         .is_none());
-    assert!(kv.keys_matching(super::vault_store::PREFIX, now).unwrap().is_empty());
+    assert!(kv
+        .keys_matching(super::vault_store::PREFIX, now)
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -187,7 +190,10 @@ fn segredo_trocado_apaga_a_copia_e_nao_restaura() {
     let outro = Vault::new(60_000, 4, "outro-segredo");
     assert_eq!(outro.attach_store(Arc::clone(&kv), now), 0);
     assert_eq!(outro.len(), 0);
-    assert!(kv.keys_matching(super::vault_store::PREFIX, now).unwrap().is_empty());
+    assert!(kv
+        .keys_matching(super::vault_store::PREFIX, now)
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -212,11 +218,15 @@ fn busca_repetida_nao_regrava_antes_do_intervalo() {
     let scope = vault.put("alldebrid", KEY, now).unwrap();
     let key = super::vault_store::key_for(&scope);
     let exp_de = |kv: &NativeKv| {
-        kv.get_json(&key, now).unwrap().unwrap()["exp"].as_i64().unwrap()
+        kv.get_json(&key, now).unwrap().unwrap()["exp"]
+            .as_i64()
+            .unwrap()
     };
     let primeiro = exp_de(&kv);
     vault.put("alldebrid", KEY, now + 60_000).unwrap();
     assert_eq!(exp_de(&kv), primeiro, "1 min depois não regrava");
-    vault.put("alldebrid", KEY, now + super::vault_store::REFRESH_MS).unwrap();
+    vault
+        .put("alldebrid", KEY, now + super::vault_store::REFRESH_MS)
+        .unwrap();
     assert_eq!(exp_de(&kv), primeiro + super::vault_store::REFRESH_MS);
 }

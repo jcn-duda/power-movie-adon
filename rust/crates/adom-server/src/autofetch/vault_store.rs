@@ -101,7 +101,10 @@ pub(super) fn load(kv: &NativeKv, resolve_secret: &str, now_ms: i64) -> Vec<Rest
     for key in keys {
         let scope = key[PREFIX.len()..].to_string();
         let row = kv.get_json(&key, now_ms).ok().flatten();
-        let sealed = row.as_ref().and_then(|v| v.get("k")).and_then(Value::as_str);
+        let sealed = row
+            .as_ref()
+            .and_then(|v| v.get("k"))
+            .and_then(Value::as_str);
         let expires_at = row
             .as_ref()
             .and_then(|v| v.get("exp"))

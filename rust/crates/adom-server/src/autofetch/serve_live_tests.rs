@@ -22,7 +22,8 @@ use super::super::probe_step::{self, ProbeSkipReason, ProbeStep};
 use super::super::season_step;
 use super::super::worker::live::LIVE_KEY;
 use super::super::Policy;
-use super::{engine_for_pass, Control, DebridFactory, Message};
+use super::jobs::engine_for_pass;
+use super::{Control, DebridFactory, Message};
 use crate::tail_effects::SEASON_KEY;
 
 const SEARCH: &str = "tt1234567:1:2";

@@ -131,15 +131,20 @@ pub(crate) fn read(kv: &NativeKv, search_key: &str, now_ms: i64) -> Result<Optio
 }
 
 fn load(kv: &NativeKv, now_ms: i64) -> Result<Vec<Lot>, String> {
-    let mut out = Vec::new();
-    for key in kv.keys_matching(LOT_PREFIX, now_ms)? {
-        let Some(value) = kv.get_json(&key, now_ms)? else {
-            continue;
-        };
+    let keys = kv.keys_matching(LOT_PREFIX, now_ms)?;
+    // Uma trava para o lote (get_many_json): JSON inválido sai em silêncio e a
+    // chave ausente é logada abaixo; expiradas já foram podadas na listagem.
+    let rows = kv.get_many_json(&keys, now_ms)?;
+    let found: BTreeSet<String> = rows.iter().map(|(key, _)| key.clone()).collect();
+    let mut out = Vec::with_capacity(rows.len());
+    for (key, value) in rows {
         match serde_json::from_value::<Lot>(value) {
             Ok(lot) => out.push(lot),
             Err(err) => eprintln!("[autofetch] lote ilegível em {key}: {err}"),
         }
+    }
+    for key in keys.iter().filter(|key| !found.contains(*key)) {
+        eprintln!("[autofetch] lote ilegível ou vencido em {key}");
     }
     Ok(out)
 }
