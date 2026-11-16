@@ -13,7 +13,10 @@
 const AFTV_BASE = 'https://go.aftvnews.com/';
 const CACHE_TTL_MS = 24 * 60 * 60_000;
 const CACHE_MAX = 2_000;
-const MAX_CONCURRENT = 2;
+// Uma por vez: o FlareSolverr atende uma requisição por vez e é o mesmo dos
+// indexers BR e do raspador. Duas vagas deixavam qualquer um, sem login,
+// segurar o solver o tempo todo com códigos aleatórios.
+const MAX_CONCURRENT = 1;
 // A AFTVnews às vezes responde "The server is under heavy load" (texto puro,
 // sem destino). É passageiro: tenta de novo algumas vezes antes de desistir.
 const MAX_ATTEMPTS = 3;
@@ -29,17 +32,32 @@ interface AftvResolverOptions {
   timeoutMs?: number;
   /** Espera entre tentativas (teste injeta 0). */
   retryDelayMs?: number;
+  /** Consultas simultâneas ao solver (padrão 1). */
+  maxConcurrent?: number;
 }
 
 /** `url` = destino; `null` = o código não existe; erro = falha de rede/solver. */
 type AftvResult = { url: string } | { url: null };
+
+// O navegador do solver pode parar na própria AFTVnews (http ou https, com ou
+// sem www) quando o código não existe: isso nunca é destino. Medido em
+// 2026-11-15: código aleatório devolvia {"url":"http://go.aftvnews.com/<código>"}
+// porque a checagem só conhecia o prefixo https.
+function isAftvHost(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return host === 'aftvnews.com' || host.endsWith('.aftvnews.com');
+  } catch {
+    return true;
+  }
+}
 
 const DESTINATION = /window\.location\s*=\s*"(https?:\/\/[^"]+)"/;
 
 function extractDestination(solutionUrl: string, body: string): AftvResult | 'unknown' | 'overloaded' {
   if (/does not exist/i.test(body)) return { url: null };
   if (OVERLOADED.test(body)) return 'overloaded';
-  if (solutionUrl && !solutionUrl.startsWith(AFTV_BASE) && /^https?:\/\//.test(solutionUrl)) {
+  if (solutionUrl && /^https?:\/\//.test(solutionUrl) && !isAftvHost(solutionUrl)) {
     return { url: solutionUrl };
   }
   const match = DESTINATION.exec(body);
@@ -52,6 +70,7 @@ function createAftvResolver(options: AftvResolverOptions) {
   const now = options.now ?? Date.now;
   const timeoutMs = options.timeoutMs ?? 60_000;
   const retryDelayMs = options.retryDelayMs ?? RETRY_DELAY_MS;
+  const maxConcurrent = Math.max(1, options.maxConcurrent ?? MAX_CONCURRENT);
   const cache = new Map<string, { result: AftvResult; at: number }>();
   const inflight = new Map<string, Promise<AftvResult>>();
   let active = 0;
@@ -90,7 +109,7 @@ function createAftvResolver(options: AftvResolverOptions) {
     if (cached && now() - cached.at < CACHE_TTL_MS) return cached.result;
     const pending = inflight.get(code);
     if (pending) return pending;
-    if (active >= MAX_CONCURRENT) throw new Error('busy');
+    if (active >= maxConcurrent) throw new Error('busy');
 
     active += 1;
     const task = solve(code)
@@ -107,7 +126,13 @@ function createAftvResolver(options: AftvResolverOptions) {
     return task;
   }
 
-  return { resolve };
+  /** O código já tem resposta em cache (ou em voo): não custa o solver. */
+  function isCached(code: string): boolean {
+    const cached = cache.get(code);
+    return Boolean((cached && now() - cached.at < CACHE_TTL_MS) || inflight.has(code));
+  }
+
+  return { resolve, isCached };
 }
 
 export { createAftvResolver, extractDestination };

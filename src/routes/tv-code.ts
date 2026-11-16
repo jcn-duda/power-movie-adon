@@ -61,7 +61,10 @@ interface TvCodeOptions {
   lookupPerIp?: WindowLimit;
   lookupGlobal?: WindowLimit;
   /** Resolve códigos que não são nossos na AFTVnews (FlareSolverr). */
-  aftv?: { resolve(code: string): Promise<AftvResult> };
+  aftv?: { resolve(code: string): Promise<AftvResult>; isCached?(code: string): boolean };
+  /** Teto da ida à AFTVnews (FlareSolverr), por IP e global. */
+  aftvPerIp?: WindowLimit;
+  aftvGlobal?: WindowLimit;
 }
 
 /**
@@ -114,6 +117,11 @@ function makeTvCodeHandlers(options: TvCodeOptions = {}) {
   const allowCreate = createRateLimiter(options.createPerIp ?? { limit: 20, windowMs: 10 * 60_000 }, now);
   const allowLookupIp = createRateLimiter(options.lookupPerIp ?? { limit: 20, windowMs: 60_000 }, now);
   const allowLookupGlobal = createRateLimiter(options.lookupGlobal ?? { limit: 300, windowMs: 60_000 }, now);
+  // A ida à AFTVnews custa o FlareSolverr, que é serial e compartilhado com os
+  // indexers BR e o raspador: o teto dela é bem menor que o da consulta, senão
+  // códigos aleatórios seguravam o solver e a busca degradava para todos.
+  const allowAftvIp = createRateLimiter(options.aftvPerIp ?? { limit: 4, windowMs: 10 * 60_000 }, now);
+  const allowAftvGlobal = createRateLimiter(options.aftvGlobal ?? { limit: 30, windowMs: 10 * 60_000 }, now);
   const byCode = new Map<string, Entry>();
   const byUrl = new Map<string, string>();
 
@@ -188,7 +196,14 @@ function makeTvCodeHandlers(options: TvCodeOptions = {}) {
     const code = String(req.params.code || '');
     const entry = CODE_PATTERN.test(code) ? byCode.get(code) : undefined;
     if (!entry || entry.expiresAt <= now()) {
-      if (options.aftv && AFTV_CODE_PATTERN.test(code)) return fromAftv(code, res);
+      if (options.aftv && AFTV_CODE_PATTERN.test(code)) {
+        const free = options.aftv.isCached?.(code) ?? false;
+        // IP antes do global: o IP barrado não pode gastar a cota de todos.
+        if (!free && (!allowAftvIp(clientIp(req)) || !allowAftvGlobal('global'))) {
+          return res.status(429).json({ error: 'muitas consultas de código da AFTVnews; aguarde alguns minutos' });
+        }
+        return fromAftv(code, res);
+      }
       return res.status(404).json({ error: 'código não encontrado, expirado ou já usado' });
     }
     entry.usesLeft -= 1;

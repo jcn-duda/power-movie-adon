@@ -369,6 +369,11 @@
     "test/title-acronyms.test.js",
     "test/title-normalization-fold.test.js",
     "test/title-precision-tail.test.js",
-    "test/torrent-total-size.test.js"
+    "test/torrent-total-size.test.js",
+    "test/aftv-resolve.test.js",
+    "test/app-updates.test.js",
+    "test/configure-app-key.test.js",
+    "test/configure-tv-code.test.js",
+    "test/tv-code.test.js"
   ]
 }

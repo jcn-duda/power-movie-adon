@@ -110,6 +110,7 @@ test('recusa o que não é manifest de addon', async () => {
 test('código que não é nosso é resolvido na AFTVnews', async () => {
   const calls: string[] = [];
   const s = await serve({
+    aftvPerIp: { limit: 50, windowMs: 60_000 },
     aftv: {
       async resolve(code: string) {
         calls.push(code);
@@ -181,4 +182,35 @@ test('acceptableUrl: regra estrita para esta instância, https para outro addon'
   assert.equal(acceptableUrl('http://powermovie.net/abc/manifest.json', 'outro.net'), null, 'de outro host, só https');
   assert.equal(acceptableUrl('https://powermovie.net/abc/manifest.json#x', 'outro.net'), null);
   assert.equal(acceptableUrl('https://powermovie.net/abc/manifest.json?x=1', 'powermovie.net'), null);
+});
+
+test('ida à AFTVnews tem teto próprio por IP e global; código em cache não conta', async () => {
+  const calls: string[] = [];
+  const cached = new Set(['5550000']);
+  const s = await serve({
+    aftvPerIp: { limit: 2, windowMs: 60_000 },
+    aftvGlobal: { limit: 3, windowMs: 60_000 },
+    aftv: {
+      isCached: (code: string) => cached.has(code),
+      async resolve(code: string) {
+        calls.push(code);
+        return { url: null };
+      },
+    },
+  });
+  try {
+    const ip = { 'cf-connecting-ip': '198.51.100.7' };
+    assert.equal((await s.lookup('1234501', ip)).status, 404);
+    assert.equal((await s.lookup('1234502', ip)).status, 404);
+    const barrado = await s.lookup('1234503', ip);
+    assert.equal(barrado.status, 429, 'o 3º código do mesmo IP não chega ao FlareSolverr');
+    assert.match(barrado.json.error, /AFTVnews/);
+    assert.ok(!calls.includes('1234503'));
+    assert.equal((await s.lookup('5550000', ip)).status, 404, 'código em cache não custa o solver nem o teto');
+    assert.equal((await s.lookup('1234504', { 'cf-connecting-ip': '198.51.100.8' })).status, 404);
+    assert.equal((await s.lookup('1234505', { 'cf-connecting-ip': '198.51.100.9' })).status, 429,
+      'o teto global vale trocando o IP');
+  } finally {
+    await s.close();
+  }
 });

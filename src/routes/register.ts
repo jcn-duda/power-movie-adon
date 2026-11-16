@@ -47,8 +47,15 @@ function registerRoutes(app: express.Express, services: AppServices, addonInterf
   app.get('/defaults.json', publicHandlers.defaults);
   app.post('/seal-config', express.text({ type: () => true, limit: '16kb' }), publicHandlers.seal);
   // Encurtador numérico para a TV (app Power Movie): antes do /:userConfig.
+  const aftvLimits = services.config.tvCodeAftv;
+  const aftvWindowMs = 10 * 60_000;
   const tvCode = makeTvCodeHandlers({
-    aftv: createAftvResolver({ flaresolverrUrl: services.config.flaresolverrUrl }),
+    aftv: createAftvResolver({
+      flaresolverrUrl: services.config.flaresolverrUrl,
+      maxConcurrent: aftvLimits.concurrent,
+    }),
+    aftvPerIp: { limit: aftvLimits.perIp, windowMs: aftvWindowMs },
+    aftvGlobal: { limit: aftvLimits.global, windowMs: aftvWindowMs },
   });
   app.post('/tv-code', express.text({ type: () => true, limit: '16kb' }), tvCode.create);
   app.get('/tv-code/:code', tvCode.lookup);

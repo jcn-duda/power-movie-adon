@@ -24,7 +24,7 @@ import { nativeMetrics } from './config/native-metrics.js';
 import { releaseIndex, accountFastPath, harvest, seed, f3 } from './config/harvest.js';
 import { crawl } from './config/crawl.js';
 import { magnetDb, audioAudit, notify } from './config/audit.js';
-import { appUpdates, flaresolverrUrl } from './config/app-updates.js';
+import { appUpdates, flaresolverrUrl, tvCodeAftv } from './config/app-updates.js';
 
 const config = {
   // port, host, addonName, addonId, version, provider, logging
@@ -69,6 +69,8 @@ const config = {
   appUpdates: appUpdates(),
   // FlareSolverr para resolver códigos da AFTVnews no /tv-code.
   flaresolverrUrl: flaresolverrUrl(),
+  // Teto da ida à AFTVnews (FlareSolverr) no /tv-code.
+  tvCodeAftv: tvCodeAftv(),
 };
 
 export default config;

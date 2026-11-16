@@ -53,7 +53,7 @@ test('falha do solver vira erro', async () => {
   await assert.rejects(resolver.resolve('7330456'), /FlareSolverr/);
 });
 
-test('mais de 2 códigos diferentes ao mesmo tempo: o terceiro recebe busy', async () => {
+test('um código por vez no solver (padrão): o segundo diferente recebe busy', async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
   const fetchImpl = async () => {
@@ -61,6 +61,23 @@ test('mais de 2 códigos diferentes ao mesmo tempo: o terceiro recebe busy', asy
     return new Response(JSON.stringify({ status: 'ok', solution: { url: DEST, response: '' } }));
   };
   const resolver = createAftvResolver({ flaresolverrUrl: 'http://fs/v1', fetchImpl });
+  const a = resolver.resolve('111');
+  assert.equal(resolver.isCached('111'), true, 'em voo não custa outra vaga');
+  await assert.rejects(resolver.resolve('222'), /busy/);
+  release();
+  await a;
+  assert.equal(resolver.isCached('111'), true);
+  assert.equal(resolver.isCached('222'), false);
+});
+
+test('com maxConcurrent 2, o terceiro código diferente recebe busy', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const fetchImpl = async () => {
+    await gate;
+    return new Response(JSON.stringify({ status: 'ok', solution: { url: DEST, response: '' } }));
+  };
+  const resolver = createAftvResolver({ flaresolverrUrl: 'http://fs/v1', fetchImpl, maxConcurrent: 2 });
   const a = resolver.resolve('111');
   const b = resolver.resolve('222');
   await assert.rejects(resolver.resolve('333'), /busy/);
@@ -91,4 +108,13 @@ test('AFTVnews sobrecarregada nas 3 tentativas: erro overloaded e nada em cache'
   assert.equal(calls, 3);
   await assert.rejects(resolver.resolve('8508163'), /overloaded/);
   assert.equal(calls, 6, 'falha não fica em cache');
+});
+
+test('a própria AFTVnews (http, https ou www) nunca é destino', () => {
+  // Medido em 2026-11-15: o solver parou em http://go.aftvnews.com/<código>
+  // antes do redirect e o app recebia a AFTVnews como link de instalação.
+  for (const url of ['http://go.aftvnews.com/9137024', 'https://www.aftvnews.com/x', 'https://aftvnews.com/']) {
+    assert.equal(extractDestination(url, '<html>carregando</html>'), 'unknown', url);
+  }
+  assert.deepEqual(extractDestination(DEST, ''), { url: DEST });
 });
