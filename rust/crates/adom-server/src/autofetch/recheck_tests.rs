@@ -98,7 +98,7 @@ fn due_at_espera_pelo_menos_um_intervalo() {
     lot.attempts = 2;
     assert_eq!(
         due_at(&lot, policy),
-        lot.created_at + 2 * policy.recheck_interval_ms
+        lot.created_at + 3 * policy.recheck_interval_ms
     );
 }
 

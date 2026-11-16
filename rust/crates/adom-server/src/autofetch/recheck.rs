@@ -212,24 +212,44 @@ pub(crate) fn schedule(
     Ok(Some(lot))
 }
 
-/// Quando o lote volta a ser olhado: um intervalo por passagem já feita. Lote
-/// que ainda não teve nenhuma passagem espera o PRIMEIRO intervalo
-/// (`createdAt + interval`) — sem isso o laço reprocessaria no mesmo ciclo do
-/// enfileiramento.
+/// Quando o lote volta a ser olhado — o relógio do `armRecheck` do Node, que
+/// rearmava o timer a partir da passagem ANTERIOR (o lote não guarda o instante
+/// da última passagem, então ele é reconstruído de `createdAt` + `attempts`):
 ///
-/// O intervalo depende do MODO do lote, como no `armRecheck` do Node: em settle
-/// vale `autoFetchSettleMs` (15 min), fora dele `autoFetchRecheckMs` (2 min).
+/// - fase curta: a passagem `n+1` sai em `createdAt + (n+1)·recheck` (2 min).
+///   Zero passagens espera o PRIMEIRO intervalo — sem isso o laço
+///   reprocessaria no mesmo ciclo do enfileiramento. Com o teto atingido o
+///   prazo para de crescer: o próximo tick entra em settle sem esperar mais um
+///   intervalo à toa;
+/// - settle: conta a partir do FIM da fase curta
+///   (`createdAt + recheckMax·recheck`), um `settle` (15 min) por passagem
+///   feita em settle. Multiplicar `attempts` inteiro pelo intervalo do settle
+///   jogava a 1ª passagem para 45 min após a criação (medido na VPS em
+///   2026-11-15: o dublado ficou pronto 7 min após o lote e a lista só seria
+///   invalidada 38 min depois).
+///
 /// Usar o intervalo do recheck no settle faria o lote drenar dinheiro do debrid
 /// 7,5× mais vezes do que o Node.
 pub(crate) fn due_at(lot: &Lot, policy: Policy) -> i64 {
-    let interval = if lot.is_settle {
-        policy.settle_interval_ms
-    } else {
-        policy.recheck_interval_ms
-    };
-    let passes = lot.attempts.max(1);
-    lot.created_at
-        .saturating_add(passes.saturating_mul(interval))
+    let short_passes = policy.recheck_max.max(1);
+    if !lot.is_settle {
+        let passes = lot.attempts.max(0).saturating_add(1).min(short_passes);
+        return lot
+            .created_at
+            .saturating_add(passes.saturating_mul(policy.recheck_interval_ms));
+    }
+    let short_end = lot.created_at.saturating_add(
+        policy
+            .recheck_max
+            .max(0)
+            .saturating_mul(policy.recheck_interval_ms),
+    );
+    let settle_passes = lot
+        .attempts
+        .saturating_sub(policy.recheck_max)
+        .max(0)
+        .saturating_add(1);
+    short_end.saturating_add(settle_passes.saturating_mul(policy.settle_interval_ms))
 }
 
 fn facts_of(lot: &Lot, policy: Policy, now_ms: i64) -> LotFacts {

@@ -34,12 +34,52 @@ fn due_at_usa_o_intervalo_do_modo() {
     lot.is_settle = false;
     assert_eq!(
         due_at(&lot, policy),
-        lot.created_at + policy.recheck_interval_ms
+        lot.created_at + 2 * policy.recheck_interval_ms,
+        "fase curta: a 2ª passagem sai um intervalo depois da 1ª"
     );
+    lot.attempts = policy.recheck_max;
     lot.is_settle = true;
     assert_eq!(
         due_at(&lot, policy),
-        lot.created_at + policy.settle_interval_ms
+        lot.created_at
+            + policy.recheck_max * policy.recheck_interval_ms
+            + policy.settle_interval_ms,
+        "settle: um intervalo de settle a partir do fim da fase curta"
+    );
+}
+
+/// Regressão medida na VPS (2026-11-15): o lote entrava em settle com
+/// `attempts = 3` e a 1ª passagem dele caía em `createdAt + 3·settle` (45 min)
+/// — o `armRecheck` do Node rearmava 15 min depois da última passagem curta.
+#[test]
+fn settle_conta_do_fim_da_fase_curta_e_nao_da_criacao() {
+    let policy = Policy::fixture();
+    let mut lot = lot();
+    lot.is_settle = true;
+    lot.attempts = policy.recheck_max;
+    let short_end = lot.created_at + policy.recheck_max * policy.recheck_interval_ms;
+    assert_eq!(due_at(&lot, policy), short_end + policy.settle_interval_ms);
+    assert!(
+        due_at(&lot, policy) < lot.created_at + policy.recheck_max * policy.settle_interval_ms,
+        "a 1ª passagem em settle não pode esperar recheckMax intervalos de settle"
+    );
+    lot.attempts = policy.recheck_max + 1;
+    assert_eq!(
+        due_at(&lot, policy),
+        short_end + 2 * policy.settle_interval_ms
+    );
+}
+
+/// No teto da fase curta o prazo para de crescer: o tick seguinte entra em
+/// settle sem esperar mais um intervalo curto à toa.
+#[test]
+fn fase_curta_no_teto_nao_empurra_o_prazo() {
+    let policy = Policy::fixture();
+    let mut lot = lot();
+    lot.attempts = policy.recheck_max;
+    assert_eq!(
+        due_at(&lot, policy),
+        lot.created_at + policy.recheck_max * policy.recheck_interval_ms
     );
 }
 
@@ -64,5 +104,8 @@ fn due_at_respeita_o_knob_do_settle() {
     let mut lot = lot();
     lot.attempts = 3;
     lot.is_settle = true;
-    assert_eq!(due_at(&lot, policy), lot.created_at + 3 * 60_000);
+    assert_eq!(
+        due_at(&lot, policy),
+        lot.created_at + 3 * policy.recheck_interval_ms + 60_000
+    );
 }
