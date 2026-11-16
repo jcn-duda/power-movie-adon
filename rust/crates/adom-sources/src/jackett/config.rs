@@ -35,6 +35,8 @@ pub struct JackettConfig {
     pub br_indexer_timeout_ms: u64,
     pub download_timeout_ms: u64,
     pub max_download_resolves: usize,
+    /// Saltos `Link` → magnet em voo por indexer (o `mapLimit` do TS).
+    pub resolve_concurrency: usize,
     /// SSRF: permitir IP privado no `Link` de terceiro.
     pub allow_private_download_ips: bool,
     pub breaker_enabled: bool,
@@ -57,6 +59,7 @@ impl Default for JackettConfig {
             br_indexer_timeout_ms: 20_000,
             download_timeout_ms: 8_000,
             max_download_resolves: 20,
+            resolve_concurrency: 10,
             allow_private_download_ips: false,
             breaker_enabled: true,
             breaker_failures: 3,
@@ -102,6 +105,9 @@ impl JackettConfig {
             max_download_resolves: env_u64("JACKETT_MAX_DOWNLOAD_RESOLVES")
                 .map(|n| n as usize)
                 .unwrap_or(20),
+            resolve_concurrency: env_u64("JACKETT_RESOLVE_CONCURRENCY")
+                .map(|n| n.max(1) as usize)
+                .unwrap_or(10),
             allow_private_download_ips: env_trim("JACKETT_ALLOW_PRIVATE_DOWNLOAD_IPS")
                 .is_some_and(|raw| raw.eq_ignore_ascii_case("true")),
             breaker_enabled: env_trim("JACKETT_BREAKER_ENABLED")
@@ -153,6 +159,7 @@ impl fmt::Debug for JackettConfig {
             .field("br_indexer_timeout_ms", &self.br_indexer_timeout_ms)
             .field("download_timeout_ms", &self.download_timeout_ms)
             .field("max_download_resolves", &self.max_download_resolves)
+            .field("resolve_concurrency", &self.resolve_concurrency)
             .field(
                 "allow_private_download_ips",
                 &self.allow_private_download_ips,

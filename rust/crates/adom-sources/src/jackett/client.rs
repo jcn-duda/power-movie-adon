@@ -15,6 +15,7 @@ use reqwest::Client;
 use super::breaker::Breaker;
 use super::config::JackettConfig;
 use super::download::{self, download_client};
+use super::link_memo::LinkMemo;
 use super::query::{budget_for, shape_for, shape_search_query};
 use super::types::{IndexerStatus, JackettMediaType, JackettRawItem, QueryOutcome, SearchOptions};
 use crate::http::remaining;
@@ -26,6 +27,7 @@ pub struct JackettClient {
     http: Client,
     download_http: Client,
     breaker: Arc<Breaker>,
+    link_memo: Arc<LinkMemo>,
 }
 
 impl JackettClient {
@@ -44,6 +46,7 @@ impl JackettClient {
             http,
             download_http,
             breaker: Arc::new(Breaker::new()),
+            link_memo: Arc::new(LinkMemo::default()),
         })
     }
 
@@ -200,12 +203,12 @@ impl JackettClient {
             }
             found_query = step.search_query;
         }
-        let _ = found_query;
 
         let items = if skip_resolve {
             found_items
         } else {
-            self.resolve_links(indexer, found_items, deadline_at).await
+            self.resolve_links(indexer, &found_query, found_items, deadline_at)
+                .await
         };
 
         let source_ok = !items.is_empty() || source_error.is_none();
@@ -241,6 +244,9 @@ impl JackettClient {
 #[path = "client_fetch.rs"]
 mod client_fetch;
 use client_fetch::*;
+
+#[path = "client_resolve.rs"]
+mod client_resolve;
 
 #[path = "client_outcomes.rs"]
 mod client_outcomes;

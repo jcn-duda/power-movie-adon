@@ -25,6 +25,7 @@ mod client;
 mod config;
 mod config_file;
 mod download;
+mod link_memo;
 mod query;
 mod results;
 pub mod status_board;

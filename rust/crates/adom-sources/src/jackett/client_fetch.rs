@@ -182,51 +182,6 @@ impl JackettClient {
         let raw = format!("{base}/api/v2.0/indexers/{indexer}/results");
         Url::parse(&raw).map_err(|err| format!("URL Jackett inválida: {err}"))
     }
-
-    pub(super) async fn resolve_links(
-        &self,
-        indexer: &str,
-        items: Vec<JackettRawItem>,
-        deadline_at: i64,
-    ) -> Vec<JackettRawItem> {
-        let mut out = Vec::with_capacity(items.len());
-        let mut resolved = 0usize;
-        for mut item in items {
-            let has_hash = item
-                .info_hash
-                .as_deref()
-                .filter(|h| !h.is_empty())
-                .is_some();
-            let has_magnet = item
-                .magnet
-                .as_deref()
-                .is_some_and(|m| m.to_ascii_lowercase().starts_with("magnet:?"));
-            if has_hash || has_magnet {
-                out.push(item);
-                continue;
-            }
-            let Some(link) = item.download_url.clone() else {
-                continue;
-            };
-            if resolved >= self.config.max_download_resolves {
-                continue;
-            }
-            let left = remaining(deadline_at)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            if left < 400 {
-                break;
-            }
-            resolved += 1;
-            if let Some(magnet) = self.resolve_download_magnet(&link, left).await {
-                item.magnet = Some(magnet);
-                out.push(item);
-            } else {
-                eprintln!("[jackett] {indexer}: Link sem magnet útil");
-            }
-        }
-        out
-    }
 }
 
 pub(super) struct FetchStep {
