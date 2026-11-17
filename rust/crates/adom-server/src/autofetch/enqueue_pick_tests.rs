@@ -68,6 +68,7 @@ fn item(hash: &str, title: &str, seeders: i64) -> Value {
         "name": format!("{title} 👤 {seeders}"),
         "_quality": "1080p",
         "_seeders": seeders,
+        "_size": 1_500_000_000i64,
         "_br": false,
         "_dubbed": false
     })
@@ -275,4 +276,52 @@ async fn marker_do_aceite_casa_com_a_obra_do_registro() {
             .any(|entry| entry.hash == hash && entry.pool == "br"),
         "o registro sob o digest do marker guarda o hash aceito"
     );
+}
+
+/// Night Life (1989): dois medidos fracos e seis fotos do índice com o "1"
+/// fixo do MagnetDL. Com as réguas de produção (teto 2, raro 4, limiar 6) o
+/// lote é RARO e o Chupim tenta 4; sem a marca `_fromSnapshot`, as fotos
+/// contavam e ele ficava em 2 (2026-11-16).
+#[tokio::test]
+async fn foto_do_indice_nao_tira_o_lote_do_regime_raro() {
+    let regua = json!({
+        "autoFetchTopSeedsMax": 2,
+        "autoFetchRareThreshold": 6,
+        "autoFetchRareMax": 4,
+        "autoFetchRareMaxSeeders": 10,
+        "autoFetchMinSeeders": 3,
+    });
+    let lote_com = |snapshot: bool| {
+        let mut items = vec![
+            item(&hash_of(1), "Night Life 1989 mp4", 9),
+            item(&hash_of(2), "Night Life (1989) Mkv", 2),
+        ];
+        for n in 3..9 {
+            let mut foto = item(&hash_of(n), "Night Life (1989) VHSRip", 1);
+            if snapshot {
+                foto["_fromSnapshot"] = json!(true);
+            }
+            items.push(foto);
+        }
+        items
+    };
+    let (attempts, accepted) = lote(regua.clone(), &lote_com(true)).await;
+    assert_eq!(attempts, 4, "raro: até 4 ({accepted:?})");
+    let (attempts, _) = lote(regua, &lote_com(false)).await;
+    assert_eq!(attempts, 2, "régua antiga: as fotos tiravam o raro");
+}
+
+/// Último nível nunca baixa acima de `SEEDS_MAX_GB` (8): o 1080p de 20 GB do
+/// índice entrava no TorBox pelo worker nativo, que não aplicava a régua.
+#[tokio::test]
+async fn pool_seeds_recusa_o_que_passa_do_teto_de_tamanho() {
+    let grande = hash_of(1);
+    let pequeno = hash_of(2);
+    let mut enorme = item(&grande, "Night Life 1989 1080p", 40);
+    enorme["_size"] = json!(20_723_217_203i64);
+    let items = vec![enorme, item(&pequeno, "Night Life 1989 1080p", 5)];
+    let regua = json!({ "autoFetchTopSeedsMax": 2, "autoFetchSeedsMaxGb": 8 });
+    let (attempts, accepted) = lote(regua, &items).await;
+    assert_eq!(attempts, 1);
+    assert_eq!(accepted, vec![pequeno]);
 }

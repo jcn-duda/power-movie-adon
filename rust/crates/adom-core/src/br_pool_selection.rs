@@ -99,8 +99,7 @@ pub struct PoolStream {
     pub is_lied: bool,
     pub from_fallback: bool,
     pub fallback_fetchable: bool,
-    /// Foto do índice (📦): o seeders é o salvo, não medido — e o MagnetDL
-    /// publica sempre 1. Só a contagem do título raro o ignora.
+    /// Foto do índice (📦): seeders salvo, não medido; o título raro o ignora.
     pub from_snapshot: bool,
 }
 
@@ -168,7 +167,8 @@ impl Default for PoolOptions {
 fn seeders_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(&format!(r"👤{s}*([0-9]+)", s = JS_SPACE)).expect("regex de seeders compila")
+        // `~N`: foto do índice (📦); sem o `~?` ela valia 0 para o Chupim.
+        Regex::new(&format!(r"👤{s}*~?([0-9]+)", s = JS_SPACE)).expect("regex de seeders compila")
     })
 }
 

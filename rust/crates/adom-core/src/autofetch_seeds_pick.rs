@@ -270,6 +270,35 @@ mod tests {
         assert_eq!(r.candidates.len(), 2);
     }
 
+    /// O lote do Chupim chega sem `_seeders` (o `sortAndLimit` o tira) e o
+    /// número vem do nome. Na foto do índice o nome traz `👤 ~1`: sem o `~` no
+    /// regex ela valia 0 e o complemento relaxado nunca a escolhia.
+    #[test]
+    fn foto_do_indice_com_til_no_nome_entra_no_complemento() {
+        let mut streams = vec![stream("aaa", 9)];
+        for hash in ["f1", "f2"] {
+            streams.push(PoolStream {
+                info_hash: Some(hash.to_string()),
+                name: Some("📦 · SD · magnetdownload · 👤 ~1".to_string()),
+                title: Some("Night Life 1989 VHSRip".to_string()),
+                from_snapshot: true,
+                ..Default::default()
+            });
+        }
+        let live = SeedsPickLive {
+            min_seeders: 3,
+            top_seeds_max: 3,
+            pt_first: false,
+        };
+        let opts = SeedsPickOpts {
+            season: None,
+            queue_depth: 0,
+            rare: RareConfig::default(),
+        };
+        let r = pick_seeds_pool(&streams, &live, &opts, &all_viable(&streams));
+        assert_eq!(r.candidates.len(), 3, "o forte e as duas fotos");
+    }
+
     #[test]
     fn complemento_relaxado_preenche_vagas() {
         let streams = vec![stream("aaa", 10), stream("bbb", 1)];

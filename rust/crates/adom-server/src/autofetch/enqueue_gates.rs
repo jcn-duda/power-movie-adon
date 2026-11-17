@@ -16,6 +16,8 @@ const LIVE_CONFIG_KEY: &str = "cfg:v1:autofetch";
 const BUDGET_PREFIX: &str = "autofetch-worker:v1:budget:";
 const HOUR_MS: i64 = 60 * 60 * 1000;
 /// Nome do pool global dublado no Node (`src/config/debrid.ts:210`).
+const SEEDS_MAX_GB_ENV: &str = "DEBRID_AUTO_FETCH_SEEDS_MAX_GB";
+const SEEDS_MAX_QUALITY_ENV: &str = "DEBRID_AUTO_FETCH_SEEDS_MAX_QUALITY";
 const ANY_ENV: &str = "DEBRID_AUTO_FETCH_ANY";
 /// Gate mestre do Chupim no Node (`src/config/debrid.ts:195`).
 const BR_ENV: &str = "DEBRID_AUTO_FETCH_BR";
@@ -89,6 +91,11 @@ pub(in crate::autofetch) struct LivePolicy {
     /// (`src/config/debrid.ts:285`) + `Math.max(0, n)` do overlay
     /// (`src/utils/autofetch-live.ts:129`). `0` desliga o memo.
     pub(in crate::autofetch) pause_refresh_ms: i64,
+    /// Limites do último nível (`debrid-autofetch-seeds.ts:39-40`): nunca acima
+    /// de `SEEDS_MAX_GB` (default 8) nem de `SEEDS_MAX_QUALITY` (1080p, sem
+    /// REMUX), e tamanho desconhecido é recusado.
+    pub(in crate::autofetch) seeds_max_gb: f64,
+    pub(in crate::autofetch) seeds_max_quality: &'static str,
 }
 
 impl LivePolicy {
@@ -204,7 +211,33 @@ impl LivePolicy {
             rare_threshold,
             rare_max_seeders,
             pause_refresh_ms,
+            seeds_max_gb: live
+                .as_ref()
+                .and_then(|value| value.get("autoFetchSeedsMaxGb"))
+                .and_then(Value::as_f64)
+                .or_else(|| std::env::var(SEEDS_MAX_GB_ENV).ok()?.trim().parse().ok())
+                .unwrap_or(8.0)
+                .max(0.0),
+            seeds_max_quality: seeds_quality(
+                live.as_ref()
+                    .and_then(|value| value.get("autoFetchSeedsMaxQuality"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or_else(|| std::env::var(SEEDS_MAX_QUALITY_ENV).ok())
+                    .as_deref(),
+            ),
         })
+    }
+}
+
+/// `normalizeSeedsMaxQuality` com vida estática: o `LivePolicy` é `Copy`.
+fn seeds_quality(raw: Option<&str>) -> &'static str {
+    match raw.map(str::trim) {
+        Some("2160p") => "2160p",
+        Some("720p") => "720p",
+        Some("480p") => "480p",
+        Some("SD") => "SD",
+        _ => "1080p",
     }
 }
 

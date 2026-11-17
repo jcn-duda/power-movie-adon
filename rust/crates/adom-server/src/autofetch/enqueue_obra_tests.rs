@@ -44,6 +44,7 @@ fn item(hash: &str, br: bool, dubbed: bool) -> Value {
         "name": "Titulo de Teste 1080p",
         "_quality": "1080p",
         "_seeders": 40,
+        "_size": 1_500_000_000i64,
         "_br": br,
         "_dubbed": dubbed
     })
@@ -62,6 +63,7 @@ fn rare_item(hash: &str) -> Value {
         "name": "Titulo de Teste 720p",
         "_quality": "720p",
         "_seeders": 3,
+        "_size": 1_500_000_000i64,
         "_br": false,
         "_dubbed": false,
         "_rare": true,

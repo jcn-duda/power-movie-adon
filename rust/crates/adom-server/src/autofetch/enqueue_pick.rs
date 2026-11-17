@@ -18,6 +18,7 @@
 use std::collections::{HashMap, HashSet};
 
 use adom_autofetch::v3::{CascadeCandidate, CascadePool, QueueV3};
+use adom_core::{seeds_intrinsic_rejection, SeedsCandidate, SeedsPolicyConfig};
 use adom_index::NativeKv;
 
 use super::super::enqueue_items::{seeds_pick, Item, SeedsKnobs};
@@ -60,6 +61,7 @@ pub(super) fn pick(input: PickInput<'_>) -> Result<Picked<'_>, String> {
         .filter(|item| item.pool() == CascadePool::Seeds)
         .filter(|item| !input.adrm.contains(&item.info_hash))
         .filter(|_| live.top_seeds_enabled)
+        .filter(|item| seeds_fits(item, live))
         .collect();
     let seeds = seeds_pick(
         &seeds_items,
@@ -74,6 +76,18 @@ pub(super) fn pick(input: PickInput<'_>) -> Result<Picked<'_>, String> {
         },
         input.season,
     );
+    // Uma linha por lote com pool `seeds`: sem ela não dá para saber por que o
+    // Chupim parou em N (teto, raro, piso) olhando só a conta do serviço.
+    if !seeds_items.is_empty() {
+        let fotos = seeds_items.iter().filter(|item| item.from_snapshot).count();
+        eprintln!(
+            "[autofetch] seeds: {} no pool ({fotos} do índice), {} escolhido(s), teto {}{}",
+            seeds_items.len(),
+            seeds.ranked.len(),
+            seeds.immediate_limit,
+            if seeds.rare { " (raro)" } else { "" }
+        );
+    }
 
     let mut by_hash: HashMap<&str, &Item> = HashMap::new();
     let mut candidates = Vec::with_capacity(input.items.len());
@@ -152,6 +166,29 @@ pub(super) fn pick(input: PickInput<'_>) -> Result<Picked<'_>, String> {
         candidates,
         slots,
     })
+}
+
+/// Limites intrínsecos do último nível (qualidade e tamanho): a régua do
+/// núcleo que o oráculo já aplicava e o worker nativo não — um 1080p de 20 GB
+/// do índice entrava no TorBox (Night Life 1989, 2026-11-16).
+fn seeds_fits(item: &Item, live: &LivePolicy) -> bool {
+    let cfg = SeedsPolicyConfig {
+        dubbed_only: false,
+        cached_only: false,
+        max_size_gb: 0.0,
+        seeds_max_gb: live.seeds_max_gb,
+        seeds_max_quality: live.seeds_max_quality.to_string(),
+    };
+    let candidate = SeedsCandidate {
+        size_field: item.size.map(|bytes| bytes as f64),
+        pack_bytes: item.pack_bytes.map(|bytes| bytes as f64),
+        quality_underscore: item.quality.clone(),
+        quality_plain: None,
+        size_queue: None,
+        title: item.title.clone(),
+        name: item.name.clone(),
+    };
+    seeds_intrinsic_rejection(&candidate, &cfg).is_none()
 }
 
 #[cfg(test)]
