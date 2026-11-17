@@ -23,6 +23,9 @@ pub struct SortOptions {
     pub candidate_factor: f64,
     pub br_first: bool,
     pub indexer_priority: Vec<String>,
+    /// Abaixo de N candidatos na whitelist, SD/480p/sem resolução completam a
+    /// lista. 0 = só quando NINGUÉM passa (a régua do TS, dos goldens).
+    pub quality_relax_below: f64,
 }
 
 impl Default for SortOptions {
@@ -43,6 +46,7 @@ impl Default for SortOptions {
             candidate_factor: 1.0,
             br_first: true,
             indexer_priority: Vec::new(),
+            quality_relax_below: 0.0,
         }
     }
 }

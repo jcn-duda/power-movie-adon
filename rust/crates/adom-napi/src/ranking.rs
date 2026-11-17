@@ -130,6 +130,8 @@ fn sort_options_of(input: &RankingInput) -> SortOptions {
         candidate_factor: input.candidate_factor,
         br_first: input.br_first,
         indexer_priority: input.indexer_priority.clone(),
+        // Régua do TS: o oráculo não conhece o limiar.
+        quality_relax_below: 0.0,
     }
 }
 

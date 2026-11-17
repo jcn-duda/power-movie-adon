@@ -282,6 +282,10 @@ pub fn operator_search_build_from_env() -> BuildOptions {
             .filter(|s| !s.is_empty())
             .collect();
     }
+    // `QUALITY_RELAX_BELOW=0` volta à régua do TS (SD só quando nada passa).
+    if let Some(n) = env_f64("QUALITY_RELAX_BELOW") {
+        b.quality_relax_below = n.max(0.0);
+    }
     let mut limits = b.quality_limits.clone();
     // Chave do balde sem resolução = `UNKNOWN_QUALITY` do núcleo ("sem resolução").
     for (env_key, quality) in [

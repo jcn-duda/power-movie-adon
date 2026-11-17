@@ -234,7 +234,17 @@ pub fn sort_and_limit(input: &SortInput) -> SortOutput {
     };
     let mut quality_keep: Option<HashSet<usize>> = None;
     let mut quality_relaxed = false;
-    if !opts.quality_filter.is_empty() && !cands.iter().any(quality_ok) {
+    // Com `quality_relax_below` > 0 o gatilho vira "menos de N passam": filme
+    // antigo com UM 1080p escondia todos os SD/VHSRip (Night Life 1989, 1 de
+    // 9). Quem passa continua; os de baixa qualidade só completam a lista e a
+    // ordenação (qualidade primeiro) os mantém atrás. 0 = régua do TS.
+    let passing: Vec<usize> = cands
+        .iter()
+        .filter(|c| quality_ok(c))
+        .map(|c| c.id)
+        .collect();
+    let relax_below = opts.quality_relax_below.max(1.0);
+    if !opts.quality_filter.is_empty() && (passing.len() as f64) < relax_below {
         let fallback: HashSet<usize> = cands
             .iter()
             .filter(|c| {
@@ -246,7 +256,7 @@ pub fn sort_and_limit(input: &SortInput) -> SortOutput {
             .map(|c| c.id)
             .collect();
         if !fallback.is_empty() {
-            quality_keep = Some(fallback);
+            quality_keep = Some(fallback.into_iter().chain(passing).collect());
             quality_relaxed = true;
         }
     }

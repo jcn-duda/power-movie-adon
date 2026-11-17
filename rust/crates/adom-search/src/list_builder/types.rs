@@ -80,6 +80,9 @@ pub struct BuildOptions {
     pub cached_only_ignores_seeds: bool,
     /// `qualities` (filtro de qualidade).
     pub qualities: Vec<String>,
+    /// `QUALITY_RELAX_BELOW`: com menos de N na whitelist, SD/480p/sem
+    /// resolução completam a lista. 0 = só quando ninguém passa.
+    pub quality_relax_below: f64,
     pub prefer_dubbed: bool,
     pub dubbed_only: bool,
     pub exclude_cam: bool,
@@ -135,6 +138,7 @@ impl Default for BuildOptions {
             min_seeders: 1.0,
             cached_only_ignores_seeds: true,
             qualities: vec!["2160p".into(), "1080p".into(), "720p".into()],
+            quality_relax_below: 5.0,
             prefer_dubbed: true,
             // `opts().dubbedOnly` do Node nasce de `BLUDV_DUBBED_ONLY` (default
             // TRUE) — é a MESMA opção que filtra `legendado` no scrape BR.

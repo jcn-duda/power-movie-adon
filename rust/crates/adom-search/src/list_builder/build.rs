@@ -280,6 +280,7 @@ pub fn build_stream_list(
             candidate_factor: opts.candidate_pool_factor,
             br_first: opts.br_first,
             indexer_priority: opts.indexer_priority.clone(),
+            quality_relax_below: opts.quality_relax_below,
         },
         instant_hashes: opts.instant_hashes.iter().cloned().collect(),
     };

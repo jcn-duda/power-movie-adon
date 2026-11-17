@@ -131,6 +131,7 @@ fn parse_options(c: &Value) -> SortOptions {
         candidate_factor: o["candidateFactor"].as_f64().unwrap_or(1.0),
         br_first: o["brFirst"].as_bool().unwrap_or(true),
         indexer_priority: arr("indexerPriority"),
+        quality_relax_below: 0.0,
     }
 }
 
