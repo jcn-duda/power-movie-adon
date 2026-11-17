@@ -99,6 +99,7 @@ fn render_to_queue_candidate(v: &Value) -> String {
         is_lied: s.get("_lied").and_then(|b| b.as_bool()).unwrap_or(false),
         from_fallback: false,
         fallback_fetchable: false,
+        from_snapshot: false,
     };
     let pool = v["pool"].as_str().unwrap_or("seeds");
     let o = &v["opts"];

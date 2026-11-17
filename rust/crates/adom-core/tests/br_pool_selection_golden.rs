@@ -62,6 +62,7 @@ fn parse_streams(v: &Value) -> (Vec<PoolStream>, Vec<String>) {
             is_lied: flag(row, "lied"),
             from_fallback: flag(row, "fromFallback"),
             fallback_fetchable: flag(row, "fallbackFetchable"),
+            from_snapshot: false,
         });
         ids.push(id);
     }

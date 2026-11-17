@@ -53,6 +53,8 @@ pub(super) struct Item {
     pub(super) lied: bool,
     pub(super) from_fallback: bool,
     pub(super) fallback_fetchable: bool,
+    /// `_fromSnapshot`: foto do índice (seeders salvo, não medido).
+    pub(super) from_snapshot: bool,
     pub(super) multi_work_admitted: bool,
     pub(super) waived: bool,
     /// Candidato do regime RARO do pool `seeds` (`rare` em
@@ -102,6 +104,10 @@ impl Item {
                 .unwrap_or(false),
             fallback_fetchable: raw
                 .get("_fallbackFetchable")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            from_snapshot: raw
+                .get("_fromSnapshot")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             multi_work_admitted: raw
@@ -348,6 +354,7 @@ fn stream_of(item: &Item) -> PoolStream {
         is_lied: item.lied,
         from_fallback: item.from_fallback,
         fallback_fetchable: item.fallback_fetchable,
+        from_snapshot: item.from_snapshot,
     }
 }
 

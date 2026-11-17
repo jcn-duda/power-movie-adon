@@ -227,6 +227,7 @@ pub fn filter_known_cache(input: String) -> napi::Result<String> {
             is_lied: s.is_lied,
             from_fallback: s.from_fallback,
             fallback_fetchable: s.fallback_fetchable,
+            from_snapshot: false,
         })
         .collect();
     let cached: HashSet<String> = req.cached.into_iter().collect();

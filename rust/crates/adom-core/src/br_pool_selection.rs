@@ -99,6 +99,9 @@ pub struct PoolStream {
     pub is_lied: bool,
     pub from_fallback: bool,
     pub fallback_fetchable: bool,
+    /// Foto do índice (📦): o seeders é o salvo, não medido — e o MagnetDL
+    /// publica sempre 1. Só a contagem do título raro o ignora.
+    pub from_snapshot: bool,
 }
 
 impl PoolStream {

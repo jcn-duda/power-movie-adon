@@ -37,6 +37,8 @@ pub(super) fn pool_stream_in(s: &AutofetchStreamIn) -> PoolStream {
         is_lied: s.is_lied,
         from_fallback: s.from_fallback,
         fallback_fetchable: s.fallback_fetchable,
+        // Oráculo TS: a foto do índice não existe lá.
+        from_snapshot: false,
     }
 }
 

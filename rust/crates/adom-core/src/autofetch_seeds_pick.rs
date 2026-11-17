@@ -69,7 +69,7 @@ pub fn pick_seeds_pool(
 
     // Seletor limitado do pool: coleta até `limit` candidatos VIÁVEIS na ordem
     // do pool (topSeededPool com minSeeders variável), com dedupe por hash.
-    let pick_viable = |limit: i64, min_seeders: i64| -> Vec<usize> {
+    let pick_viable = |limit: i64, min_seeders: i64, measured_only: bool| -> Vec<usize> {
         let max = limit.max(0) as usize;
         if max == 0 {
             return Vec::new();
@@ -95,7 +95,7 @@ pub fn pick_seeds_pool(
             if !seen.insert(key.clone()) {
                 continue;
             }
-            if !viable_hashes.contains(&key) {
+            if !viable_hashes.contains(&key) || (measured_only && s.from_snapshot) {
                 continue;
             }
             out.push(i);
@@ -103,11 +103,14 @@ pub fn pick_seeds_pool(
         out
     };
 
-    // Detecção de título RARO: universo com minSeeders=1, conta VIÁVEIS.
+    // Detecção de título RARO: universo com minSeeders=1, conta VIÁVEIS com
+    // seeders MEDIDO. A foto do índice (📦) traz o salvo — no MagnetDL é sempre
+    // 1 — e seis delas tiravam o Night Life (1989) do regime raro: 2 downloads
+    // em vez de 4, com os dois "Stalled (No Seeds)" (2026-11-16).
     let mut immediate_limit = live.top_seeds_max;
     let mut rare_used = false;
     if opts.rare.threshold > 0 && opts.rare.max > immediate_limit {
-        let universo = pick_viable(opts.rare.threshold + 1, 1);
+        let universo = pick_viable(opts.rare.threshold + 1, 1, true);
         let melhor = universo
             .iter()
             .map(|&i| streams[i].seeders_number())
@@ -123,7 +126,7 @@ pub fn pick_seeds_pool(
     }
 
     let seeds_limit = immediate_limit + opts.queue_depth;
-    let mut candidates = pick_viable(seeds_limit, live.min_seeders);
+    let mut candidates = pick_viable(seeds_limit, live.min_seeders, false);
 
     // Complemento relaxado: estrito vazio → capacidade TOTAL; parcial → vagas
     // imediatas que faltam.
@@ -140,7 +143,7 @@ pub fn pick_seeds_pool(
                 .filter_map(|&i| streams[i].info_hash.as_deref())
                 .map(|h| h.to_lowercase())
                 .collect();
-            let relaxed: Vec<usize> = pick_viable(seeds_limit, 1)
+            let relaxed: Vec<usize> = pick_viable(seeds_limit, 1, false)
                 .into_iter()
                 .filter(|&i| {
                     let key = streams[i].info_hash.as_deref().unwrap_or("").to_lowercase();
@@ -220,6 +223,51 @@ mod tests {
         let r = pick_seeds_pool(&streams, &live, &opts, &all_viable(&streams));
         assert!(r.rare_used);
         assert_eq!(r.immediate_limit, 4);
+    }
+
+    /// Night Life (1989): dois medidos fracos (9 e 2 seeders) e seis fotos do
+    /// índice com o "1" fixo do MagnetDL. Contando as fotos, o universo
+    /// passava do limiar e o Chupim ficava em 2; medindo só o medido, é raro
+    /// e as fotos completam até 4.
+    #[test]
+    fn foto_do_indice_nao_tira_o_titulo_do_regime_raro() {
+        let mut streams = vec![stream("aaa", 9), stream("bbb", 2)];
+        for hash in ["c1", "c2", "c3", "c4", "c5", "c6"] {
+            streams.push(PoolStream {
+                from_snapshot: true,
+                ..stream(hash, 1)
+            });
+        }
+        let live = SeedsPickLive {
+            min_seeders: 3,
+            top_seeds_max: 2,
+            pt_first: false,
+        };
+        let opts = SeedsPickOpts {
+            season: None,
+            queue_depth: 0,
+            rare: RareConfig {
+                max: 4,
+                threshold: 6,
+                max_seeders: 10,
+            },
+        };
+        let r = pick_seeds_pool(&streams, &live, &opts, &all_viable(&streams));
+        assert!(r.rare_used, "só os medidos contam para o raro");
+        assert_eq!(r.immediate_limit, 4);
+        assert_eq!(r.candidates.len(), 4);
+
+        // Sem a marca (régua antiga), as seis fotos tiravam o raro.
+        let plain: Vec<PoolStream> = streams
+            .iter()
+            .map(|s| PoolStream {
+                from_snapshot: false,
+                ..s.clone()
+            })
+            .collect();
+        let r = pick_seeds_pool(&plain, &live, &opts, &all_viable(&plain));
+        assert!(!r.rare_used);
+        assert_eq!(r.candidates.len(), 2);
     }
 
     #[test]

@@ -195,6 +195,7 @@ pub fn ranking_to_pool(stream: &RankingStream) -> PoolStream {
         is_lied: stream.lied.unwrap_or(false),
         from_fallback,
         fallback_fetchable,
+        from_snapshot: flag("_fromSnapshot", "fromSnapshot"),
     }
 }
 

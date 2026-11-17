@@ -82,6 +82,8 @@ pub struct AutofetchItem {
     pub tracker: Option<String>,
     pub from_fallback: bool,
     pub fallback_fetchable: bool,
+    /// `_fromSnapshot`: foto do índice — seeders salvo, não medido.
+    pub from_snapshot: bool,
     pub seed_floor_waived: bool,
     pub multi_work_admitted: bool,
     /// `_bankDub`: dublado que só o banco de magnets sabe.
@@ -284,6 +286,7 @@ pub(crate) fn autofetch_item_of(stream: &RankingStream) -> Option<AutofetchItem>
         tracker: stream.tracker.clone(),
         from_fallback: from_fallback(stream),
         fallback_fetchable: opt_flag(stream, "_fallbackFetchable", "fallbackFetchable"),
+        from_snapshot: opt_flag(stream, "_fromSnapshot", "fromSnapshot"),
         seed_floor_waived: opt_flag(stream, "_seedFloorWaived", "seedFloorWaived"),
         multi_work_admitted: stream.multi_work_admitted.unwrap_or(false),
         bank_dub: opt_flag(stream, "bankDub", "_bankDub"),

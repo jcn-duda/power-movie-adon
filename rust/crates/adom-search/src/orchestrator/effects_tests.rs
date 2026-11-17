@@ -44,6 +44,7 @@ fn autofetch_item() -> AutofetchItem {
         tracker: Some("bludv".into()),
         from_fallback: false,
         fallback_fetchable: false,
+        from_snapshot: false,
         seed_floor_waived: false,
         multi_work_admitted: false,
         bank_dub: false,
@@ -300,7 +301,11 @@ fn autofetch_batch_leva_a_politica_do_usuario() {
     };
     let policy = autofetch_policy(&opts);
     assert_eq!(policy["dubbedOnly"], json!(true));
-    assert_eq!(policy["qualityLimits"], json!({ "1080p": 2 }), "teto 0 não entra");
+    assert_eq!(
+        policy["qualityLimits"],
+        json!({ "1080p": 2 }),
+        "teto 0 não entra"
+    );
 
     let work = work();
     let mut ctx = ctx(&work, "alldebrid", "chave");
@@ -311,4 +316,22 @@ fn autofetch_batch_leva_a_politica_do_usuario() {
     };
     let effect = autofetch_batch(&seeds, &ctx).expect("lote");
     assert_eq!(effect.payload["policy"], policy);
+}
+
+/// O Chupim ignora o seeders da foto do índice na contagem do título raro:
+/// a marca tem que viajar no lote, e só quando verdadeira.
+#[test]
+fn autofetch_batch_leva_a_marca_da_foto_do_indice() {
+    let work = work();
+    let mut lote = seeds();
+    lote.autofetch = vec![
+        AutofetchItem {
+            from_snapshot: true,
+            ..autofetch_item()
+        },
+        autofetch_item(),
+    ];
+    let effect = autofetch_batch(&lote, &ctx(&work, "torbox", "chave")).expect("efeito");
+    assert_eq!(effect.payload["items"][0]["_fromSnapshot"], json!(true));
+    assert!(effect.payload["items"][1].get("_fromSnapshot").is_none());
 }

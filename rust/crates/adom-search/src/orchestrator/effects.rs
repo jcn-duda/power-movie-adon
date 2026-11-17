@@ -243,6 +243,11 @@ fn item_json(item: &AutofetchItem) -> Value {
     out.insert("_dubClaim".into(), json!(item.dub_claim));
     out.insert("_fromFallback".into(), json!(item.from_fallback));
     out.insert("_fallbackFetchable".into(), json!(item.fallback_fetchable));
+    // Só quando verdadeiro: o Chupim ignora o seeders da foto na contagem do
+    // título raro; ausente vale `false`, como no lote antigo.
+    if item.from_snapshot {
+        out.insert("_fromSnapshot".into(), json!(true));
+    }
     out.insert("_seedFloorWaived".into(), json!(item.seed_floor_waived));
     out.insert("_multiWorkAdmitted".into(), json!(item.multi_work_admitted));
     out.insert("_bankDub".into(), json!(item.bank_dub));

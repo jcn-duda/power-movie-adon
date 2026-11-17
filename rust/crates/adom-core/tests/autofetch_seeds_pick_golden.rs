@@ -51,6 +51,8 @@ fn parse_stream(v: &Value) -> PoolStream {
         is_lied: v.get("_lied").and_then(|b| b.as_bool()).unwrap_or(false),
         from_fallback: false,
         fallback_fetchable: false,
+        // O oráculo TS não conhece a foto do índice: régua antiga.
+        from_snapshot: false,
     }
 }
 
