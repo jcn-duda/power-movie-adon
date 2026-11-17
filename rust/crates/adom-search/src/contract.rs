@@ -34,6 +34,11 @@ pub struct BehaviorHints {
         default
     )]
     pub binge_group: Option<String>,
+    /// `"dvd"` quando o release é disco (`VIDEO_TS`/ISO): o app Power Movie
+    /// pede as partes ao `/resolve` e emenda os VOBs no próprio player.
+    /// Cliente Stremio comum ignora a chave.
+    #[serde(rename = "adomDisc", skip_serializing_if = "Option::is_none", default)]
+    pub adom_disc: Option<String>,
 }
 
 /// Um item de `streams`. Todos os campos são opcionais porque cada variante
@@ -108,6 +113,7 @@ mod tests {
                 ]),
                 behavior_hints: Some(BehaviorHints {
                     binge_group: Some("powerm-1080p-web-dl".to_string()),
+                    ..BehaviorHints::default()
                 }),
                 url: None,
                 external_url: None,
@@ -171,6 +177,7 @@ mod tests {
                 title: Some("Filme Teste 2024 1080p WEB-DL DUBLADO\n👤 10 💾 1.50 GB ⚙️ FakeTracker".to_string()),
                 behavior_hints: Some(BehaviorHints {
                     binge_group: Some("powerm-1080p-web-dl".to_string()),
+                    ..BehaviorHints::default()
                 }),
                 url: Some("http://127.0.0.1:7000/eyJwIjoiamFja2V0dCJ9/resolve/0123456789abcdef0123456789abcdef01234567?sig=deadbeef".to_string()),
                 size: Some("1.50 GB".to_string()),

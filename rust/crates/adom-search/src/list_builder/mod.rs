@@ -53,6 +53,7 @@ pub use audio_proof::{apply_pt_title_dual, AudioAudit};
 pub use build::{build_stream_list, relevant_count};
 pub use effects::{AuditSeed, AutofetchItem, EffectSeeds, WarmerSeed};
 pub use file_wants::pack_hashes_missing_files;
+pub use stream_map::mark_disc_url;
 pub use types::{
     apply_notice_origin, seed_floor_for, BuildContext, BuildOptions, BuiltList, BuiltStream,
     DebridAnswer, DebridCheck, WorkHint,

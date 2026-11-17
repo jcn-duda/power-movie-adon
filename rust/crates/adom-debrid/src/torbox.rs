@@ -3,7 +3,7 @@
 //! e `assertDubbedFiles`. Sem log de chave, magnet ou corpo.
 use std::time::Duration;
 
-use adom_core::{default_magnet, pick_file, DebridFile, PickOutcome, PlayHint};
+use adom_core::{default_magnet, PlayHint};
 use reqwest::Method;
 use serde_json::{Map, Value};
 
@@ -80,14 +80,14 @@ impl TorBox {
     }
 
     /// `poll_wait` na produção é 700 ms. Os testes passam `Duration::ZERO`.
-    pub async fn resolve_link(
+    pub async fn resolve_play(
         &self,
         api_key: &str,
         hash: &str,
         hint: &PlayHint,
         magnet: Option<&str>,
         poll_wait: Duration,
-    ) -> Result<Option<String>, DebridError> {
+    ) -> Result<TorboxLink, DebridError> {
         let magnet = magnet_for(hash, magnet);
         let created = self
             .call(
@@ -100,10 +100,10 @@ impl TorBox {
             )
             .await?;
         let Some(torrent_id) = torrent_id(&created) else {
-            return Ok(None);
+            return Ok(TorboxLink::Url(None));
         };
         let Some(entry) = self.poll_ready(api_key, &torrent_id, poll_wait).await? else {
-            return Ok(None);
+            return Ok(TorboxLink::Url(None));
         };
         self.link_for(api_key, &torrent_id, &entry, hint).await
     }
@@ -208,55 +208,6 @@ impl TorBox {
             }
         }
         Ok(None)
-    }
-
-    async fn link_for(
-        &self,
-        api_key: &str,
-        torrent_id: &str,
-        entry: &Value,
-        hint: &PlayHint,
-    ) -> Result<Option<String>, DebridError> {
-        let remote = torbox_check::remote_files(entry);
-        let files: Vec<DebridFile> = remote
-            .iter()
-            .map(|file| DebridFile {
-                path: file.path.clone(),
-                size: file.size,
-            })
-            .collect();
-        let (path, size) = match pick_file(&files, hint) {
-            PickOutcome::Empty => {
-                // O TS audita mesmo sem arquivo escolhido (lista vazia não
-                // condena, mas a ordem é a dele).
-                crate::play_audit::assert_dubbed(&files, hint)?;
-                return Ok(None);
-            }
-            PickOutcome::Error {
-                code,
-                evidence,
-                context,
-            } => return Err(torbox_check::pick_error(code, evidence, context)),
-            PickOutcome::File { path, size } => (path, size),
-        };
-        crate::play_audit::assert_dubbed(&files, hint)?;
-        let file_id = torbox_check::chosen_id(&remote, &path, size);
-        let dl = self
-            .call(
-                api_key,
-                "/torrents/requestdl",
-                Method::GET,
-                &[
-                    ("token", api_key),
-                    ("torrent_id", torrent_id),
-                    ("file_id", file_id.as_str()),
-                    ("redirect", "false"),
-                ],
-                None,
-                CALL_TIMEOUT,
-            )
-            .await?;
-        Ok(torbox_check::download_url(&dl))
     }
 }
 
@@ -390,6 +341,9 @@ mod torbox_check;
 #[path = "torbox_enqueue.rs"]
 mod torbox_enqueue;
 pub use torbox_enqueue::TorboxStatus;
+#[path = "torbox_disc.rs"]
+mod torbox_disc;
+pub use torbox_disc::TorboxLink;
 
 #[cfg(test)]
 #[path = "torbox_tests.rs"]

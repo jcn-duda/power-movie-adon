@@ -243,11 +243,48 @@ async fn sucesso_responde_302_e_grava_vivo_em_fundo() {
 }
 
 #[tokio::test]
+async fn dvd_responde_partes_em_json_e_grava_vivo() {
+    let parts = vec![
+        adom_debrid::play::DiscPart {
+            url: "https://cdn.test/VTS_01_1.VOB".into(),
+            size: 1_073_741_824.0,
+            name: "VTS_01_1.VOB".into(),
+        },
+        adom_debrid::play::DiscPart {
+            url: "https://cdn.test/VTS_01_2.VOB".into(),
+            size: 900_000_000.0,
+            name: "VTS_01_2.VOB".into(),
+        },
+    ];
+    let outcome = PlayOutcome {
+        parts: Some(parts),
+        ..PlayOutcome::default()
+    };
+    let effects = Arc::new(RecordingEffects::default());
+    let (status, body) = run(
+        "torbox",
+        FixedResolver::new(Ok(outcome)),
+        RecordingBridge::new(true),
+        effects.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["kind"], "dvd");
+    assert_eq!(json["parts"][0]["name"], "VTS_01_1.VOB");
+    assert_eq!(json["parts"][1]["url"], "https://cdn.test/VTS_01_2.VOB");
+    espera_ok(&effects).await;
+    let oks = effects.ok.lock().unwrap();
+    assert!(oks[0].1, "alive: o DVD tem partes tocáveis");
+}
+
+#[tokio::test]
 async fn ainda_baixando_registra_frio_sem_marcar_vivo() {
     let outcome = PlayOutcome {
         url: None,
         unavailable: true,
         files: None,
+        parts: None,
     };
     let effects = Arc::new(RecordingEffects::default());
     let (status, _) = run(

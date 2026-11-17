@@ -107,13 +107,7 @@ pub fn map_stream(
         multi_work_admitted: item.multi_work_admitted.then_some(true),
         // `bingeGroup` do Node (`search-names.ts`): episódios da MESMA release
         // tocam em sequência no Stremio. Sem isto o nativo omitia o campo.
-        behavior_hints: Some(serde_json::json!({
-            "bingeGroup": format!(
-                "powerm-{}-{}",
-                if quality == adom_core::UNKNOWN_QUALITY { "na" } else { quality.as_str() },
-                if source.is_empty() { "any" } else { source.as_str() },
-            ),
-        })),
+        behavior_hints: Some(behavior_hints(&quality, &source, &title)),
         ..RankingStream::default()
     };
     if !item.sources.is_empty() {
@@ -157,6 +151,49 @@ pub fn map_stream(
     Some(stream)
 }
 
+/// `bingeGroup` do Node (`search-names.ts`) + `adomDisc` quando o release é
+/// disco: o app Power Movie lê a marca para pedir as partes ao `/resolve`.
+fn behavior_hints(quality: &str, source: &str, title: &str) -> serde_json::Value {
+    let mut hints = serde_json::json!({
+        "bingeGroup": format!(
+            "powerm-{}-{}",
+            if quality == adom_core::UNKNOWN_QUALITY { "na" } else { quality },
+            if source.is_empty() { "any" } else { source },
+        ),
+    });
+    if adom_core::looks_disc_release(title) {
+        hints["adomDisc"] = "dvd".into();
+    }
+    hints
+}
+
+/// Release de disco, pela marca que [`map_stream`] gravou.
+pub fn is_disc_stream(stream: &RankingStream) -> bool {
+    stream
+        .behavior_hints
+        .as_ref()
+        .and_then(|hints| hints.get("adomDisc"))
+        .is_some()
+}
+
+/// `[TB⚡] Filme` → `[TB⚡] [DVD] Filme`: a marca entra DEPOIS do selo do
+/// debrid, que o app e o Stremio leem no começo do nome.
+pub fn mark_disc_name(name: &str) -> String {
+    match name.strip_prefix('[').and_then(|rest| rest.find("] ")) {
+        Some(end) => {
+            let cut = end + 3;
+            format!("{}[DVD] {}", &name[..cut], &name[cut..])
+        }
+        None => format!("[DVD] {name}"),
+    }
+}
+
+/// `/resolve/<hash>?sig=…` → `…&dvd=1`.
+pub fn mark_disc_url(url: &str) -> String {
+    let sep = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{sep}dvd=1")
+}
+
 pub fn to_stream_item(stream: &RankingStream) -> crate::contract::StreamItem {
     let title = stream.title.clone();
     let url = stream
@@ -165,8 +202,13 @@ pub fn to_stream_item(stream: &RankingStream) -> crate::contract::StreamItem {
         .and_then(|v| v.as_str())
         .map(String::from);
     let resolvido = url.is_some();
+    let disc = is_disc_stream(stream);
     crate::contract::StreamItem {
-        name: stream.name.clone(),
+        name: if disc {
+            stream.name.as_deref().map(mark_disc_name)
+        } else {
+            stream.name.clone()
+        },
         title,
         // Item resolvido pelo debrid leva `url` e perde `infoHash`/`sources`.
         info_hash: if resolvido {
@@ -191,5 +233,44 @@ pub fn to_stream_item(stream: &RankingStream) -> crate::contract::StreamItem {
         url,
         external_url: None,
         size: stream_size_label(stream.title.as_deref().unwrap_or("")),
+    }
+}
+
+#[cfg(test)]
+mod disc_tests {
+    use super::*;
+
+    #[test]
+    fn marca_dvd_depois_do_selo_do_debrid() {
+        assert_eq!(
+            mark_disc_name("[TB⚡] Night Life (1989)"),
+            "[TB⚡] [DVD] Night Life (1989)"
+        );
+        assert_eq!(
+            mark_disc_name("Night Life (1989)"),
+            "[DVD] Night Life (1989)"
+        );
+    }
+
+    #[test]
+    fn url_de_disco_carrega_dvd_fora_da_assinatura() {
+        assert_eq!(
+            mark_disc_url("/resolve/abc?sig=1"),
+            "/resolve/abc?sig=1&dvd=1"
+        );
+        assert_eq!(mark_disc_url("/resolve/abc"), "/resolve/abc?dvd=1");
+    }
+
+    #[test]
+    fn hint_de_disco_so_no_release_de_disco() {
+        let dvd = behavior_hints("SD", "", "Night Life [1989, VHSRip (DVD5)] AVO");
+        assert_eq!(dvd["adomDisc"], "dvd");
+        let encode = behavior_hints("SD", "", "Night.Life.1989.DVDRip.XviD");
+        assert!(encode.get("adomDisc").is_none());
+        let stream = RankingStream {
+            behavior_hints: Some(dvd),
+            ..RankingStream::default()
+        };
+        assert!(is_disc_stream(&stream));
     }
 }

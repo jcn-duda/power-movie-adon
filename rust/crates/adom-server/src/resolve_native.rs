@@ -258,13 +258,15 @@ pub async fn handle(path: &str, query: Option<&str>, ctx: &NativeContext) -> Res
             url,
             unavailable,
             files,
+            parts,
         }) => {
             // O 302 não espera a gravação: o SQLite roda em `spawn_blocking`, em fundo.
-            let (alive, effects) = (url.is_some(), ctx.effects.clone());
+            let (alive, effects) = (url.is_some() || parts.is_some(), ctx.effects.clone());
             tokio::task::spawn_blocking(move || effects.apply_ok(job, alive, unavailable, files));
-            match url {
-                Some(url) => redirect(&url),
-                None => still_downloading(),
+            match (url, parts) {
+                (Some(url), _) => redirect(&url),
+                (None, Some(parts)) => disc_parts(&play.info_hash, &parts),
+                (None, None) => still_downloading(),
             }
         }
         Err(failure) => {
@@ -316,6 +318,23 @@ fn redirect(url: &str) -> Response<Body> {
     let mut response = text_response(StatusCode::FOUND, "");
     response.headers_mut().insert(LOCATION, value);
     response
+}
+
+/// DVD: as partes vão em JSON para o app Power Movie emendar no player. Um
+/// cliente Stremio comum não toca isto — nem tocava o `NoVideo` de antes.
+fn disc_parts(info_hash: &str, parts: &[adom_debrid::play::DiscPart]) -> Response<Body> {
+    eprintln!(
+        "[resolve] {} kind=dvd partes={}",
+        &info_hash[..info_hash.len().min(8)],
+        parts.len()
+    );
+    let body = serde_json::json!({ "kind": "dvd", "parts": parts });
+    (
+        StatusCode::OK,
+        [(CONTENT_TYPE, "application/json; charset=utf-8")],
+        body.to_string(),
+    )
+        .into_response()
 }
 
 fn bad_hash() -> Response<Body> {

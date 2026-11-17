@@ -34,6 +34,17 @@ pub struct PlayOutcome {
     pub unavailable: bool,
     /// Lista do torrent quando o adaptador a expõe (hoje só AllDebrid).
     pub files: Option<Vec<PlayFile>>,
+    /// DVD (`VIDEO_TS`): links diretos de cada VOB do título principal, em
+    /// ordem. Com partes, `url` é `None` e a rota responde a lista em JSON.
+    pub parts: Option<Vec<DiscPart>>,
+}
+
+/// Uma parte de DVD: link direto do debrid, tamanho e nome do VOB.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct DiscPart {
+    pub url: String,
+    pub size: f64,
+    pub name: String,
 }
 
 impl PlayOutcome {
@@ -108,10 +119,16 @@ pub async fn resolve_held(
             Ok(PlayOutcome::from_url(url))
         }
         "torbox" => {
-            let url = TorBox::new(client)
-                .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)
+            let played = TorBox::new(client)
+                .resolve_play(api_key, info_hash, hint, rich.as_deref(), poll_wait)
                 .await?;
-            Ok(PlayOutcome::from_url(url))
+            Ok(match played {
+                crate::torbox::TorboxLink::Url(url) => PlayOutcome::from_url(url),
+                crate::torbox::TorboxLink::Disc(parts) => PlayOutcome {
+                    parts: Some(parts),
+                    ..PlayOutcome::default()
+                },
+            })
         }
         "debridlink" => {
             let url = DebridLink::new(client)
@@ -135,6 +152,7 @@ pub async fn resolve_held(
                 url: played.url,
                 unavailable: played.unavailable,
                 files: played.files,
+                parts: None,
             })
         }
         // Serviço desconhecido: `current()` do Node também devolve null.

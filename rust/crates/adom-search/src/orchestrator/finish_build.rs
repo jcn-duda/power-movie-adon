@@ -82,6 +82,15 @@ pub(super) fn finish_value(
                     // admissão perderia o pack de trilogia sem opt-in TMDB.
                     let multi_work = stream.multi_work || stream.multi_work_admitted;
                     let url = signer.url(&hash, stream.dubbed, multi_work);
+                    // `dvd=1` fora do HMAC (o parse do `/resolve` ignora chave
+                    // desconhecida): é como o app reconhece, só pela URL, que
+                    // deve pedir as partes do DVD em vez de abrir o link.
+                    let disc = stream.item.behavior_hints.as_ref();
+                    let url = if disc.is_some_and(|hints| hints.adom_disc.is_some()) {
+                        crate::list_builder::mark_disc_url(&url)
+                    } else {
+                        url
+                    };
                     stream.item.url = Some(url);
                     stream.item.info_hash = None;
                     stream.item.sources = None;

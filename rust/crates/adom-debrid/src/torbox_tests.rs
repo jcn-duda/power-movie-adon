@@ -80,6 +80,7 @@ pub(super) enum Kind {
     Stuck,
     NoVideo,
     DubLie,
+    Dvd,
 }
 
 pub(super) struct Hit {
@@ -195,6 +196,8 @@ fn ready_movie() -> String {
     r#"{"success":true,"data":{"download_present":true,"files":[{"id":7,"short_name":"Movie.2020.mkv","name":"other.mkv","size":1000}]}}"#.to_string()
 }
 
+const DVD_LIST: &str = r#"{"success":true,"data":{"download_present":true,"files":[{"id":10,"short_name":"VIDEO_TS.IFO","name":"Night Life/VIDEO_TS/VIDEO_TS.IFO","size":12000},{"id":13,"short_name":"VTS_01_2.VOB","name":"Night Life/VIDEO_TS/VTS_01_2.VOB","size":1073741824},{"id":12,"short_name":"VTS_01_1.VOB","name":"Night Life/VIDEO_TS/VTS_01_1.VOB","size":1073741824},{"id":11,"short_name":"VTS_01_0.VOB","name":"Night Life/VIDEO_TS/VTS_01_0.VOB","size":40000000}]}}"#;
+
 fn dub_lie_movie() -> String {
     r#"{"success":true,"data":{"download_present":true,"files":[{"id":7,"short_name":"Movie.1080p.WEB-DL.x264-RARBG.mkv","name":"other.mkv","size":1000}]}}"#.to_string()
 }
@@ -219,6 +222,7 @@ fn resolve_body(mock: &Mock, path: &str, kind: Kind) -> String {
                     r#"{"success":true,"data":{"download_finished":false,"download_present":false}}"#.to_string()
                 }
                 Kind::Happy => ready_movie(),
+                Kind::Dvd => DVD_LIST.to_string(),
                 Kind::DubLie => dub_lie_movie(),
                 Kind::NoId => r#"{"success":true,"data":{}}"#.to_string(),
             }

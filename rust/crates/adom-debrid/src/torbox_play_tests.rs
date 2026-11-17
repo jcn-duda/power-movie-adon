@@ -110,6 +110,41 @@ async fn pick_sem_video_e_erro() {
 }
 
 #[tokio::test]
+async fn dvd_devolve_partes_em_ordem() {
+    let (addr, mock) = listen(Mode::Resolve(Kind::Dvd), 200, "", None).await;
+    let svc = open(addr);
+    let played = svc
+        .resolve_play(KEY, H1, &movie(), None, Duration::ZERO)
+        .await
+        .unwrap();
+    let super::TorboxLink::Disc(parts) = played else {
+        panic!("esperava partes de DVD, veio {played:?}");
+    };
+    let names: Vec<&str> = parts.iter().map(|part| part.name.as_str()).collect();
+    assert_eq!(names, ["VTS_01_1.VOB", "VTS_01_2.VOB"]);
+    let ids: Vec<&str> = {
+        let hits = mock.hits.lock().unwrap();
+        hits.iter()
+            .filter(|hit| hit.path == "/torrents/requestdl")
+            .map(|hit| {
+                if hit.query.contains("file_id=12") {
+                    "12"
+                } else {
+                    "13"
+                }
+            })
+            .collect()
+    };
+    assert_eq!(ids, ["12", "13"], "um link por VOB, na ordem do título");
+    // A rota antiga (`/debrid/link`) não comporta partes: segue `no_video`.
+    let err = svc
+        .resolve_link(KEY, H1, &movie(), None, Duration::ZERO)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), "no_video");
+}
+
+#[tokio::test]
 async fn dubbed_prometido_com_grupo_en_vira_dub_lie() {
     let (addr, mock) = listen(Mode::Resolve(Kind::DubLie), 200, "", None).await;
     let svc = open(addr);

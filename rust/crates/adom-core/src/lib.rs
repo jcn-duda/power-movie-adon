@@ -144,12 +144,12 @@ pub use dk_seal::{derive_dk_key, is_sealed, seal_dk, unseal_dk};
 // (`src/config/helpers.ts`): os dois lados precisam mandar o mesmo id ao
 // Jackett, senão o indexer some da busca sem erro visível.
 pub use retired_indexers::{rename_indexer_id, rename_indexer_ids, RETIRED_INDEXERS};
-
 // ── debrid file select ────────────────────────────────────────────────
 pub use debrid::{
-    base_name, is_sample, is_site_ad, is_video, looks_multi_work_files, looks_pack_by_files,
-    pick_code_label, pick_file, pick_work_file, work_coverage, DebridFile, EpisodeContext,
-    EpisodeEvidence, PickCode, PickOutcome, PlayHint, WorkHint,
+    base_name, dvd_title_parts, is_sample, is_site_ad, is_video, looks_disc_release,
+    looks_multi_work_files, looks_pack_by_files, pick_code_label, pick_file, pick_work_file,
+    work_coverage, DebridFile, EpisodeContext, EpisodeEvidence, PickCode, PickOutcome, PlayHint,
+    WorkHint,
 };
 pub use debrid_cache_verdict::{
     cache_check_honest, failure_reason, failure_verdict, normalize_cache_result, unusable_reason,

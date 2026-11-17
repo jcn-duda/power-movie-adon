@@ -310,7 +310,10 @@ pub fn finalize_streams(
             season: ctx.season,
         },
     );
-    let finais: Vec<RankingStream> = limit.selected.iter().map(|&i| kept[i].clone()).collect();
+    let mut finais: Vec<RankingStream> = limit.selected.iter().map(|&i| kept[i].clone()).collect();
+    // Disco (DVD5/ISO) toca só no app Power Movie, emendando VOBs: vai para o
+    // FIM, estável, para o autoplay nunca escolhê-lo acima de um arquivo comum.
+    finais.sort_by_key(super::stream_map::is_disc_stream);
     out.count("final", finais.len());
 
     // Efeitos de cauda: o `applyDebrid` do Node os decide ANTES do

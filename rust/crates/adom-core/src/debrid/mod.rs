@@ -5,10 +5,12 @@
 //! `known`/cache não entram aqui. `DubLie` existe como tipo porque o TS o
 //! exporta; quem lança é o `audio-audit`, fora desta fase.
 
+mod disc;
 mod episode;
 mod text;
 mod work;
 
+pub use disc::{dvd_title_parts, looks_disc_release};
 pub use text::{base_name, is_sample, is_site_ad, is_video};
 pub use work::{looks_multi_work_files, pick_work_file, work_coverage};
 
