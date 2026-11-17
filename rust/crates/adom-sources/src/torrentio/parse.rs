@@ -305,9 +305,18 @@ mod tests {
 
     #[test]
     fn linha_de_idiomas_sem_pt_sai_do_titulo() {
-        for line in ["Dubbed / Dual Audio", "Dubbed / Dual Audio / 🇬🇧", "Multi Audio / 🇬🇧 / 🇮🇹"] {
-            let parsed = parse_metadata(&with_meta(&format!("[Purple] JUJUTSU KAISEN - S03E02.mkv\n{line}")));
-            assert_eq!(parsed.title, "[Purple] JUJUTSU KAISEN - S03E02.mkv", "{line}");
+        for line in [
+            "Dubbed / Dual Audio",
+            "Dubbed / Dual Audio / 🇬🇧",
+            "Multi Audio / 🇬🇧 / 🇮🇹",
+        ] {
+            let parsed = parse_metadata(&with_meta(&format!(
+                "[Purple] JUJUTSU KAISEN - S03E02.mkv\n{line}"
+            )));
+            assert_eq!(
+                parsed.title, "[Purple] JUJUTSU KAISEN - S03E02.mkv",
+                "{line}"
+            );
         }
     }
 

@@ -31,6 +31,10 @@ const HASH_LIE = 'd'.repeat(40);
 const HASH_BAD_OUTRO = 'e'.repeat(40);
 const BANK_DN = 'URI.Do.Posto.2024.1080p';
 
+// O `before` semeia o acervo por `node:sqlite` (Node 22+): no Node 20 o hook
+// caía e derrubava o arquivo inteiro, não só o primeiro teste.
+const SQLITE = { skip: !hasNodeSqlite && 'node:sqlite ausente — precisa de Node 22+' };
+
 let server: any;
 const saved: Record<string, any> = {};
 
@@ -64,7 +68,7 @@ before(async () => {
   saved.dbPath = config.magnetBank.dbPath;
   config.magnetDb.enabled = true;
   config.magnetDb.lieEnabled = true;
-  seedBank();
+  if (hasNodeSqlite) seedBank();
 
   server = await createTestServer(createApp().app);
 });
@@ -85,7 +89,7 @@ function post(body: any) {
   });
 }
 
-test('magnet-inspect lista entradas do L1 sem vazar chave nem digest de conta', { skip: !hasNodeSqlite }, async () => {
+test('magnet-inspect lista entradas do L1 sem vazar chave nem digest de conta', SQLITE, async () => {
   config.jackett.testToken = TOKEN;
   cache.clear();
   try {
@@ -119,7 +123,7 @@ test('magnet-inspect lista entradas do L1 sem vazar chave nem digest de conta', 
   }
 });
 
-test('magnet-inspect aplica filtros side, adapterId e hash, e o teto de itens', async () => {
+test('magnet-inspect aplica filtros side, adapterId e hash, e o teto de itens', SQLITE, async () => {
   config.jackett.testToken = TOKEN;
   cache.clear();
   try {
@@ -147,7 +151,7 @@ test('magnet-inspect aplica filtros side, adapterId e hash, e o teto de itens', 
   }
 });
 
-test('magnet-inspect devolve 400 para filtro inválido em vez de ignorá-lo', async () => {
+test('magnet-inspect devolve 400 para filtro inválido em vez de ignorá-lo', SQLITE, async () => {
   config.jackett.testToken = TOKEN;
   try {
     seed();
@@ -166,7 +170,7 @@ test('magnet-inspect devolve 400 para filtro inválido em vez de ignorá-lo', as
   }
 });
 
-test('magnet-summary agrega por adapter × side sem expor hash nenhum', async () => {
+test('magnet-summary agrega por adapter × side sem expor hash nenhum', SQLITE, async () => {
   config.jackett.testToken = TOKEN;
   cache.clear();
   try {
@@ -189,7 +193,7 @@ test('magnet-summary agrega por adapter × side sem expor hash nenhum', async ()
   }
 });
 
-test('magnet-clear-bad exige confirmação central (400 confirmation_required)', async () => {
+test('magnet-clear-bad exige confirmação central (400 confirmation_required)', SQLITE, async () => {
   config.jackett.testToken = TOKEN;
   cache.clear();
   try {
@@ -205,7 +209,7 @@ test('magnet-clear-bad exige confirmação central (400 confirmation_required)',
   }
 });
 
-test('magnet-clear-bad com confirm apaga só bad, preserva alive/lie e é idempotente', async () => {
+test('magnet-clear-bad com confirm apaga só bad, preserva alive/lie e é idempotente', SQLITE, async () => {
   config.jackett.testToken = TOKEN;
   cache.clear();
   try {
@@ -245,7 +249,7 @@ test('magnet-clear-bad com confirm apaga só bad, preserva alive/lie e é idempo
   }
 });
 
-test('magnet-clear-bad respeita filtro de hash, teto e valida side alheio', async () => {
+test('magnet-clear-bad respeita filtro de hash, teto e valida side alheio', SQLITE, async () => {
   config.jackett.testToken = TOKEN;
   cache.clear();
   try {

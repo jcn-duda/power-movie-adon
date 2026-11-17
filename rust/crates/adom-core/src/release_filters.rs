@@ -29,18 +29,18 @@ use crate::matches_br_title;
 use crate::matches_episode;
 use crate::matches_episode_work_identity;
 use crate::matches_global_series_no_marker;
-use crate::matches_name_article_optional;
 use crate::matches_short_name_identity;
 use crate::matches_title_structure;
 use crate::matching_decisions::{
     adaptation_identity_contradicts, first_year_in, named_sequel_contradicts, year_contradicts,
 };
-use crate::{pre_home_release_contradicts, pre_home_unsourced_contradicts};
 use crate::release_guards::{dn_names_other_work, is_software_magnet};
+use crate::release_name_matching::matches_name_article_optional;
 use crate::short_name_identity;
 use crate::short_name_tail_contradicts;
 use crate::title_tokens;
 use crate::ShortNameIdentity;
+use crate::{pre_home_release_contradicts, pre_home_unsourced_contradicts};
 use series_markers::{movie_carries_series_marker, series_release_looks_like_movie};
 
 /// Campos de `RawItem` que a relevância lê. `title_pascal` é o `Title`.

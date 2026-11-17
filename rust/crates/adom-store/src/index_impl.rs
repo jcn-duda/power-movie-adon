@@ -265,7 +265,10 @@ mod tests {
             season: Some(3),
             episode: Some(1),
         };
-        index.0.mark_missing("tt2356777", alvo, ep, NOW).expect("miss");
+        index
+            .0
+            .mark_missing("tt2356777", alvo, ep, NOW)
+            .expect("miss");
         index
             .0
             .mark_missing_season("tt2356777", 3, temporada, NOW)
@@ -274,12 +277,16 @@ mod tests {
         let s3e1 = index.missing_hashes("tt2356777", 3, 1, &hashes, NOW);
         assert_eq!(
             s3e1,
-            [ep.to_string(), temporada.to_string()].into_iter().collect()
+            [ep.to_string(), temporada.to_string()]
+                .into_iter()
+                .collect()
         );
         // Outro episódio da S3: só a marca da temporada vale.
         let s3e2 = index.missing_hashes("tt2356777", 3, 2, &hashes, NOW);
         assert_eq!(s3e2, [temporada.to_string()].into_iter().collect());
         // Outra temporada não herda nada.
-        assert!(index.missing_hashes("tt2356777", 1, 1, &hashes, NOW).is_empty());
+        assert!(index
+            .missing_hashes("tt2356777", 1, 1, &hashes, NOW)
+            .is_empty());
     }
 }

@@ -198,37 +198,69 @@ fn so_cam_com_exclude_cam_vira_aviso_de_cinema() {
     };
     let out = build(
         vec![
-            release("Filme Teste 2024 1080p CAMRip", "aa10000000000000000000000000000000000010"),
-            release("Filme Teste 2024 720p HDCAM", "aa11000000000000000000000000000000000011"),
+            release(
+                "Filme Teste 2024 1080p CAMRip",
+                "aa10000000000000000000000000000000000010",
+            ),
+            release(
+                "Filme Teste 2024 720p HDCAM",
+                "aa11000000000000000000000000000000000011",
+            ),
             // Mesmo hash por outro indexer: conta uma vez só.
-            release("Filme.Teste.2024.720p.HDCAM", "AA11000000000000000000000000000000000011"),
+            release(
+                "Filme.Teste.2024.720p.HDCAM",
+                "AA11000000000000000000000000000000000011",
+            ),
         ],
         &ctx,
         &opts,
         &mut StubDebrid::none(),
     );
     assert_eq!(out.cam_hidden, 2);
-    let names: Vec<_> = out.streams.iter().filter_map(|s| s.item.name.clone()).collect();
+    let names: Vec<_> = out
+        .streams
+        .iter()
+        .filter_map(|s| s.item.name.clone())
+        .collect();
     assert_eq!(names.len(), 1, "só o aviso: {names:?}");
     assert!(out.streams[0].notice);
-    assert!(names[0].starts_with("Só cópia de cinema (CAM)"), "{names:?}");
+    assert!(
+        names[0].starts_with("Só cópia de cinema (CAM)"),
+        "{names:?}"
+    );
 }
 
 #[test]
 fn cam_misturado_ou_sem_exclude_cam_nao_muda_o_aviso() {
     let ctx = base_ctx();
-    let cam = release("Filme Teste 2024 1080p CAMRip", "aa12000000000000000000000000000000000012");
-    let web = release("Filme Teste 2024 1080p WEB-DL", "aa13000000000000000000000000000000000013");
+    let cam = release(
+        "Filme Teste 2024 1080p CAMRip",
+        "aa12000000000000000000000000000000000012",
+    );
+    let web = release(
+        "Filme Teste 2024 1080p WEB-DL",
+        "aa13000000000000000000000000000000000013",
+    );
     let com_filtro = BuildOptions {
         exclude_cam: true,
         ..BuildOptions::default()
     };
     // Com stream tocável o CAM some sem aviso nenhum.
-    let out = build(vec![cam.clone(), web], &ctx, &com_filtro, &mut StubDebrid::none());
+    let out = build(
+        vec![cam.clone(), web],
+        &ctx,
+        &com_filtro,
+        &mut StubDebrid::none(),
+    );
     assert_eq!(out.cam_hidden, 0);
     assert!(out.streams.iter().all(|s| !s.notice));
     // Sem o filtro o CAM aparece.
-    let out = build(vec![cam], &ctx, &BuildOptions::default(), &mut StubDebrid::none());
+    let out = build(
+        vec![cam],
+        &ctx,
+        &BuildOptions::default(),
+        &mut StubDebrid::none(),
+    );
     assert_eq!(out.cam_hidden, 0);
     assert!(out.streams.iter().any(|s| !s.notice));
 }
@@ -238,8 +270,14 @@ fn cam_misturado_ou_sem_exclude_cam_nao_muda_o_aviso() {
 #[test]
 fn lista_vazia_por_outro_filtro_nao_culpa_o_cam() {
     let ctx = base_ctx();
-    let cam = release("Filme Teste 2024 1080p CAMRip", "aa14000000000000000000000000000000000014");
-    let web = release("Filme Teste 2024 1080p WEB-DL", "aa15000000000000000000000000000000000015");
+    let cam = release(
+        "Filme Teste 2024 1080p CAMRip",
+        "aa14000000000000000000000000000000000014",
+    );
+    let web = release(
+        "Filme Teste 2024 1080p WEB-DL",
+        "aa15000000000000000000000000000000000015",
+    );
     let so_4k = BuildOptions {
         exclude_cam: true,
         qualities: vec!["2160p".into()],

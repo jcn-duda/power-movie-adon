@@ -87,7 +87,11 @@ fn pack_julga_o_episodio_e_avulso_julga_o_total() {
     let out = run(30.0);
     assert_eq!(
         kept(&out),
-        vec![PACK.to_string(), SMALL_EXACT.to_string(), NO_COUNT.to_string()],
+        vec![
+            PACK.to_string(),
+            SMALL_EXACT.to_string(),
+            NO_COUNT.to_string()
+        ],
         "pack de 45/60/90 GiB fica; E02 avulso de 35 e E02 exato de 32 saem"
     );
     assert_eq!(out.funnel.get("size-limit"), Some(&2));
@@ -113,7 +117,11 @@ fn filme_segue_cortado_pelo_total() {
         sized("Filme Teste 2024 2160p WEB-DL", BIG_EP, 24.0),
     ];
     let out = build(raw, &ctx, &opts(30.0), &mut StubDebrid::all());
-    assert_eq!(kept(&out), vec![BIG_EP.to_string()], "o Remux de 51 GiB sai");
+    assert_eq!(
+        kept(&out),
+        vec![BIG_EP.to_string()],
+        "o Remux de 51 GiB sai"
+    );
 }
 
 #[test]

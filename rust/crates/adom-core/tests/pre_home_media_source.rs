@@ -62,14 +62,34 @@ fn global_sem_fonte_de_cinema_cai_na_janela() {
         title: Some(title.to_string()),
         ..Default::default()
     };
-    assert!(!keeps(global("The Odyssey 2026 1080p HD h264- ETHEL"), NOW, true));
+    assert!(!keeps(
+        global("The Odyssey 2026 1080p HD h264- ETHEL"),
+        NOW,
+        true
+    ));
     assert!(!keeps(global("The Odyssey 2026"), NOW, true));
     assert!(keeps(global("The Odyssey 2026 camrip 720p"), NOW, true));
-    assert!(keeps(global("The.Odyssey.2026.PL.AI.1080p.HDTS.H264-MAXX"), NOW, true));
+    assert!(keeps(
+        global("The.Odyssey.2026.PL.AI.1080p.HDTS.H264-MAXX"),
+        NOW,
+        true
+    ));
     assert!(keeps(global("The Odyssey (2026) HdTScr Lat"), NOW, true));
-    assert!(keeps(global("The.Odyssey.2026.D.TELECINE.1080p"), NOW, true));
-    assert!(keeps(global("The Odyssey 2026 1080p HD h264- ETHEL"), HOME_RELEASE_AT + 1, true));
-    assert!(keeps(global("The Odyssey 2026 1080p HD h264- ETHEL"), NOW, false));
+    assert!(keeps(
+        global("The.Odyssey.2026.D.TELECINE.1080p"),
+        NOW,
+        true
+    ));
+    assert!(keeps(
+        global("The Odyssey 2026 1080p HD h264- ETHEL"),
+        HOME_RELEASE_AT + 1,
+        true
+    ));
+    assert!(keeps(
+        global("The Odyssey 2026 1080p HD h264- ETHEL"),
+        NOW,
+        false
+    ));
 }
 
 #[test]

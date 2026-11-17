@@ -222,7 +222,10 @@ mod tests {
             ]},
         ]});
         let cinema = 1_793_664_000_000; // 2026-11-03
-        assert_eq!(home_release_or_estimate(&em_cartaz, 30), Some(cinema + 30 * DAY_MS));
+        assert_eq!(
+            home_release_or_estimate(&em_cartaz, 30),
+            Some(cinema + 30 * DAY_MS)
+        );
         assert_eq!(home_release_or_estimate(&em_cartaz, 0), None);
 
         let com_digital = serde_json::json!({ "results": [
@@ -231,7 +234,10 @@ mod tests {
                 { "type": 4, "release_date": "2026-11-20T00:00:00.000Z" },
             ]},
         ]});
-        assert_eq!(home_release_or_estimate(&com_digital, 30), earliest_home_release(&com_digital));
+        assert_eq!(
+            home_release_or_estimate(&com_digital, 30),
+            earliest_home_release(&com_digital)
+        );
         assert!(home_release_or_estimate(&serde_json::json!({ "results": [] }), 30).is_none());
     }
 }

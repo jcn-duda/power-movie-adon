@@ -128,7 +128,11 @@ fn iso_ms(text: &str) -> Option<i64> {
     let num = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
     let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
     let (h, mi, s) = (num(11..13)?, num(14..16)?, num(17..19)?);
-    let ms = if text.get(19..20) == Some(".") { num(20..23).unwrap_or(0) } else { 0 };
+    let ms = if text.get(19..20) == Some(".") {
+        num(20..23).unwrap_or(0)
+    } else {
+        0
+    };
     // days_from_civil (Howard Hinnant): dias desde 1970-01-01.
     let y = if mo <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
@@ -152,14 +156,9 @@ async fn replay_loaded(root: &Path, case: &LoadedCase) -> Result<(), String> {
     let body = expected_body(&case.meta, &case.response)?;
     let dir = materialize_case(root, &case.meta)?;
     let now_ms = case.meta.captured_at.as_deref().and_then(iso_ms);
-    let outcome = frozen_gate::run_case_with_expected_at(
-        &dir,
-        &body,
-        E2E_ORIGIN,
-        CONFIG_SEGMENT,
-        now_ms,
-    )
-    .await;
+    let outcome =
+        frozen_gate::run_case_with_expected_at(&dir, &body, E2E_ORIGIN, CONFIG_SEGMENT, now_ms)
+            .await;
     let _ = fs::remove_dir_all(&dir);
     outcome.map_err(|diff| format!("{}\n{diff}", case.meta.id))
 }
