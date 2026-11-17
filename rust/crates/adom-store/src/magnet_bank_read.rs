@@ -389,6 +389,8 @@ fn err_ctx(ctx: &'static str) -> impl Fn(rusqlite::Error) -> String {
 // Export NDJSON do acervo (régua byte-fiel do `exportLines` do TS) — catraca.
 #[path = "magnet_bank_export.rs"]
 pub(crate) mod export;
+#[path = "magnet_bank_named.rs"]
+mod named;
 
 // Testes embutidos aqui (e não no `magnet_bank.rs`) porque o arquivo-pai
 // estava a 5 linhas do teto de 400.

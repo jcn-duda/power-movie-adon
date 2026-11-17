@@ -208,3 +208,60 @@ async fn escopo_da_porta_nao_carrega_a_chave() {
     assert!(!port.scope().contains(KEY));
     assert!(!port.capabilities().evict);
 }
+
+/// Caça às Bruxas na Premiumize (2026-11-16): o Chupim subia só o hash e o
+/// torrent BR ficava "0 peer" com o hash no lugar do nome. Com o acervo
+/// instalado, Premiumize e TorBox recebem o magnet rico (nome + trackers).
+///
+/// O acervo é um `OnceLock` do processo: a instalação é a MESMA de
+/// `checagem_sobe_o_magnet_rico_do_banco` (hash `e`), então a ordem dos testes
+/// não muda o resultado.
+#[tokio::test]
+async fn enqueue_premiumize_e_torbox_levam_o_magnet_rico_do_acervo() {
+    let rich_hash = hash_of('e');
+    let uri = format!("magnet:?xt=urn:btih:{rich_hash}&dn=Filme&tr=udp%3A%2F%2Ft.example%3A80");
+    let stored = uri.clone();
+    let wanted = rich_hash.clone();
+    crate::magnet_uri::install(Arc::new(move |hash: &str| {
+        (hash == wanted).then(|| stored.clone())
+    }));
+
+    let (addr, scene) = listen(
+        vec![(
+            "POST /transfer/create",
+            200,
+            json!({"status": "success", "id": "7"}).to_string(),
+        )],
+        (404, "{}".into()),
+    )
+    .await;
+    let port = AutofetchPorts::premiumize(premiumize(addr), KEY);
+    assert!(port.enqueue(&candidate(&rich_hash)).await.unwrap().accepted);
+    port.enqueue(&candidate(&hash_of('9'))).await.unwrap();
+    let bodies: Vec<String> = scene
+        .hits
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|h| h.body.clone())
+        .collect();
+    assert!(bodies[0].contains("dn%3DFilme"), "acervo: {}", bodies[0]);
+    assert!(
+        !bodies[1].contains("dn%3D"),
+        "fora do acervo: magnet padrão"
+    );
+
+    let (addr, scene) = listen(
+        vec![(
+            "POST /torrents/createtorrent",
+            200,
+            json!({"success": true, "data": {"torrent_id": 3}}).to_string(),
+        )],
+        (404, "{}".into()),
+    )
+    .await;
+    let port = AutofetchPorts::torbox(torbox(addr), KEY);
+    port.enqueue(&candidate(&rich_hash)).await.unwrap();
+    let body = scene.hits.lock().unwrap()[0].body.clone();
+    assert!(body.contains("Filme"), "torbox: {body}");
+}

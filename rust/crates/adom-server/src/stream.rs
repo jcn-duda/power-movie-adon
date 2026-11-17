@@ -228,11 +228,12 @@ fn wire_native_index(orch: Orchestrator) -> Orchestrator {
             Ok(store) => {
                 eprintln!("[gateway] banco de magnets nativo (magnets.db)");
                 let store = Arc::new(store);
-                // Uploads da AllDebrid (checagem e Chupim) sobem o magnet RICO
-                // do acervo: nome + trackers, não só o hash.
+                // Uploads aos debrids (checagem da AllDebrid, Chupim e play)
+                // sobem o magnet RICO do acervo: nome + trackers, não só o
+                // hash. Sem `dn=` gravado (Torrentio), o título vira o nome.
                 let read = Arc::clone(&store);
                 adom_debrid::magnet_uri::install(Arc::new(move |hash: &str| {
-                    read.bank_lookup_uri(hash, 0)
+                    read.bank_lookup_named_uri(hash)
                         .ok()
                         .flatten()
                         .filter(|uri| !uri.is_empty())
