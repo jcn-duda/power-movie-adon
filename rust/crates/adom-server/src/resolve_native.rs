@@ -242,6 +242,7 @@ pub async fn handle(path: &str, query: Option<&str>, ctx: &NativeContext) -> Res
         imdb: hint_imdb(&play.hint),
         season: hint.season,
         episode: hint.episode,
+        disc: false,
     };
     match ctx
         .resolver
@@ -260,6 +261,10 @@ pub async fn handle(path: &str, query: Option<&str>, ctx: &NativeContext) -> Res
             files,
             parts,
         }) => {
+            let job = PlayJob {
+                disc: parts.is_some(),
+                ..job
+            };
             // O 302 não espera a gravação: o SQLite roda em `spawn_blocking`, em fundo.
             let (alive, effects) = (url.is_some() || parts.is_some(), ctx.effects.clone());
             tokio::task::spawn_blocking(move || effects.apply_ok(job, alive, unavailable, files));

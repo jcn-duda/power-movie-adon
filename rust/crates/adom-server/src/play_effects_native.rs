@@ -43,6 +43,8 @@ pub struct PlayJob {
     pub imdb: String,
     pub season: Option<i64>,
     pub episode: Option<i64>,
+    /// O play devolveu as partes de um DVD (`VIDEO_TS`).
+    pub disc: bool,
 }
 
 /// Escritas do play. Trait para a rota de teste receber um gravador de faz de
@@ -174,6 +176,21 @@ fn grava<T>(what: &str, result: Result<T, String>) {
     }
 }
 
+impl NativePlayEffects {
+    /// DVD tocou com partes: o `bad` do mesmo hash nasceu do `no_video` de
+    /// antes do suporte a DVD (o seletor não via VOB como vídeo). Sem apagá-lo
+    /// o hash segue cortado da lista ANTES da checagem do debrid até o TTL,
+    /// mesmo com o play provando vídeo. Só este caso: `alive` comum não
+    /// ressuscita `bad` (regra do store).
+    fn forget_disc_bad(&self, job: &PlayJob) {
+        if let Some(mag) = &self.mag {
+            if let Err(err) = mag.forget_bad(&job.service, &job.api_key, &job.hash) {
+                eprintln!("[resolve] bad do DVD não apagado: {err}");
+            }
+        }
+    }
+}
+
 impl PlayEffects for NativePlayEffects {
     fn apply_ok(&self, job: PlayJob, alive: bool, unavailable: bool, files: Option<Vec<PlayFile>>) {
         let now = now_ms();
@@ -182,6 +199,9 @@ impl PlayEffects for NativePlayEffects {
             self.note_unavailable(&job, now);
         }
         if alive {
+            if job.disc {
+                self.forget_disc_bad(&job);
+            }
             self.mark_alive(&job, now);
         }
     }
@@ -206,3 +226,7 @@ impl PlayEffects for NoPlayEffects {
 #[cfg(test)]
 #[path = "play_effects_native_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_effects_disc_tests.rs"]
+mod disc_tests;

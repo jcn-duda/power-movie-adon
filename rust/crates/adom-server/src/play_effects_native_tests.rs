@@ -31,6 +31,7 @@ fn job(service: &str) -> PlayJob {
         imdb: IMDB.into(),
         season: Some(2),
         episode: Some(5),
+        disc: false,
     }
 }
 

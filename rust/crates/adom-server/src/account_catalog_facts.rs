@@ -238,6 +238,7 @@ impl CatalogFacts for ProdFacts {
             imdb: String::new(),
             season: None,
             episode: None,
+            disc: false,
         };
         let list: Vec<PlayFile> = files
             .iter()
