@@ -15,7 +15,7 @@ FROM caddy:2-alpine AS caddy
 # (bludv-cardigann, comandotorrents, nerdfilmes, torrentdosfilmesv2, vacatorrent,
 # redetorrent-cardigann, apachetorrent-cardigann, hdrtorrent-cardigann,
 # torrentgalaxy-cardigann).
-FROM lscr.io/linuxserver/jackett@sha256:047a28f2493d04a95d5a6bc5670a68c9bce99159e6a9ddf8ff9d564fc0b27bd7 AS jackett
+FROM lscr.io/linuxserver/jackett@sha256:653d879518f974b40f2ec59dc8c1d011e5293d175bf4867d7aacbbeb8ed43b28 AS jackett
 
 # Atualize o digest deliberadamente; nunca deixe uma mudança em `latest` alterar
 # o deploy sem revisão, como já fazemos com o Jackett acima. Pin: v3.5.2
