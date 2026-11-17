@@ -14,7 +14,7 @@ adom-index = { path = "../adom-index" }
 adom-search = { path = "../adom-search" }
 # Trait `RawStore` do `raw:v1` (o coletor BLUDV nativo a consome).
 adom-sources = { path = "../adom-sources" }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled", "fallible_uint"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

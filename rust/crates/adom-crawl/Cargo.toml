@@ -29,7 +29,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # tokio: sync (Mutex) e time (sleep, Duration) para o throttle.
 tokio = { version = "1", features = ["sync", "time", "macros", "rt-multi-thread", "signal"] }
 # ── store (crawl.db via rusqlite com SQLite bundled) ──────────────────
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled", "fallible_uint"] }
 # ── servidor HTTP do sidecar (painel + entrypoint) ────────────────────
 axum = { version = "0.8", features = ["json"] }
 # ── SHA1 para button_id (matching de botões) ─────────────────────────
