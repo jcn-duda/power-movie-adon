@@ -203,25 +203,27 @@ async fn resolve(
     client: HttpClient,
     hint: &PlayHint,
 ) -> Result<Option<String>, DebridError> {
+    // Mesmo magnet rico do play nativo (`play::resolve_held`).
+    let rich = crate::magnet_uri::stored_rich(&body.hash);
     match body.service.as_str() {
         "premiumize" => {
             Premiumize::new(client)
-                .resolve_link(&body.api_key, &body.hash, hint, None)
+                .resolve_link(&body.api_key, &body.hash, hint, rich.as_deref())
                 .await
         }
         "debridlink" => {
             DebridLink::new(client)
-                .resolve_link(&body.api_key, &body.hash, hint, None, POLL_WAIT)
+                .resolve_link(&body.api_key, &body.hash, hint, rich.as_deref(), POLL_WAIT)
                 .await
         }
         "torbox" => {
             TorBox::new(client)
-                .resolve_link(&body.api_key, &body.hash, hint, None, POLL_WAIT)
+                .resolve_link(&body.api_key, &body.hash, hint, rich.as_deref(), POLL_WAIT)
                 .await
         }
         _ => {
             RealDebrid::new(client)
-                .resolve_link(&body.api_key, &body.hash, hint, None, POLL_WAIT)
+                .resolve_link(&body.api_key, &body.hash, hint, rich.as_deref(), POLL_WAIT)
                 .await
         }
     }

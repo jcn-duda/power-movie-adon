@@ -91,28 +91,31 @@ pub async fn resolve_held(
     poll_wait: Duration,
     held: bool,
 ) -> Result<PlayOutcome, PlayError> {
+    // Play fora do cache cria o torrent na conta: com só o hash ele aparecia
+    // sem nome e sem os trackers do release (TorBox/Premiumize, 2026-11-16).
+    let rich = crate::magnet_uri::stored_rich(info_hash);
     match service {
         "premiumize" => {
             let url = Premiumize::new(client)
-                .resolve_link(api_key, info_hash, hint, None)
+                .resolve_link(api_key, info_hash, hint, rich.as_deref())
                 .await?;
             Ok(PlayOutcome::from_url(url))
         }
         "realdebrid" => {
             let url = RealDebrid::new(client)
-                .resolve_link(api_key, info_hash, hint, None, poll_wait)
+                .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)
                 .await?;
             Ok(PlayOutcome::from_url(url))
         }
         "torbox" => {
             let url = TorBox::new(client)
-                .resolve_link(api_key, info_hash, hint, None, poll_wait)
+                .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)
                 .await?;
             Ok(PlayOutcome::from_url(url))
         }
         "debridlink" => {
             let url = DebridLink::new(client)
-                .resolve_link(api_key, info_hash, hint, None, poll_wait)
+                .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)
                 .await?;
             Ok(PlayOutcome::from_url(url))
         }

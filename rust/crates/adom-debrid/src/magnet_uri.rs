@@ -27,6 +27,12 @@ pub fn lookup(hash: &str) -> Option<String> {
     LOOKUP.get().and_then(|read| read(hash))
 }
 
+/// Magnet rico gravado para o hash (nome + trackers do release), ou `None`.
+/// Os serviços com `magnet: Option<&str>` caem no `default_magnet` sem ele.
+pub fn stored_rich(hash: &str) -> Option<String> {
+    lookup(hash).and_then(|uri| crate::alldebrid::rich_magnet(hash, &uri))
+}
+
 /// O que vai em `magnets[]`: o magnet rico quando a URI é do MESMO hash, senão
 /// o hash puro.
 pub fn upload_value(hash: &str, uri: Option<&str>) -> String {

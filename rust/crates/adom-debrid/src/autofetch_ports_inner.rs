@@ -25,6 +25,11 @@ impl AutofetchPorts {
         if hash.is_empty() {
             return Ok(rejected());
         }
+        // Magnet rico do acervo (nome + trackers do release). Com só o hash e
+        // os trackers fixos, Premiumize/TorBox mostravam o hash no lugar do
+        // nome e o torrent ficava em "0 peer" sem metadado (2026-11-16).
+        let stored = crate::magnet_uri::stored_rich(&hash);
+        let magnet = stored.as_deref();
         match &self.backend {
             Backend::AllDebrid { service, facts } => {
                 // Sem `cache.db` a guarda `adrm` não é legível: nada é enviado.
@@ -63,7 +68,7 @@ impl AutofetchPorts {
                 })
             }
             Backend::TorBox(service) => {
-                let accepted = service.enqueue(&self.api_key, &hash, None).await?;
+                let accepted = service.enqueue(&self.api_key, &hash, magnet).await?;
                 Ok(EnqueueEvidence {
                     accepted,
                     // O primitivo só diz se há id; adivinhar o número seria mentira.
@@ -71,7 +76,7 @@ impl AutofetchPorts {
                 })
             }
             Backend::Premiumize(service) => {
-                let id = service.enqueue(&self.api_key, &hash, None).await?;
+                let id = service.enqueue(&self.api_key, &hash, magnet).await?;
                 self.learn(id.as_deref(), &hash);
                 Ok(EnqueueEvidence {
                     accepted: id.is_some(),
@@ -91,7 +96,7 @@ impl AutofetchPorts {
                         ports.torrents.clone(),
                         &self.api_key,
                         &hash,
-                        None,
+                        magnet,
                         &hint,
                         ports.poll_wait,
                     )
@@ -105,7 +110,7 @@ impl AutofetchPorts {
             }
             Backend::DebridLink(service) => {
                 let accepted = service
-                    .enqueue_autofetch(&self.api_key, &hash, None)
+                    .enqueue_autofetch(&self.api_key, &hash, magnet)
                     .await?;
                 Ok(EnqueueEvidence {
                     accepted,
