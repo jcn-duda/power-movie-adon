@@ -11,6 +11,7 @@ use adom_core::{
 
 use crate::error::DebridError;
 use crate::http::{Call, HttpClient};
+use crate::play::PlayLink;
 
 const DEFAULT_BASE: &str = "https://debrid-link.com/api/v2";
 const TIMEOUT: Duration = Duration::from_millis(6_000);
@@ -39,14 +40,14 @@ impl DebridLink {
     }
 
     /// `poll_wait` na produção é 700 ms. Os testes passam `Duration::ZERO`.
-    pub async fn resolve_link(
+    pub async fn resolve_play(
         &self,
         api_key: &str,
         hash: &str,
         hint: &PlayHint,
         magnet: Option<&str>,
         poll_wait: Duration,
-    ) -> Result<Option<String>, DebridError> {
+    ) -> Result<PlayLink, DebridError> {
         self.usable_base()?;
         let magnet = magnet_for(hash, magnet);
         let added = self
@@ -59,7 +60,7 @@ impl DebridLink {
             )
             .await?;
         let Some(id) = truthy_id(&added) else {
-            return Ok(None);
+            return Ok(PlayLink::Url(None));
         };
         let mut entry = added;
         for _ in 0..MAX_POLLS {
@@ -79,9 +80,9 @@ impl DebridLink {
             entry = first_row(list);
         }
         if percent_below_100(&entry) {
-            return Ok(None);
+            return Ok(PlayLink::Url(None));
         }
-        link_for_entry(&entry, hint)
+        link::link_for_entry(&entry, hint)
     }
 
     fn usable_base(&self) -> Result<&str, DebridError> {
@@ -124,6 +125,9 @@ impl DebridLink {
         value_of(data)
     }
 }
+
+#[path = "debridlink_link.rs"]
+mod link;
 
 #[path = "debridlink_autofetch.rs"]
 mod autofetch;
@@ -338,49 +342,6 @@ fn remote_file(file: &Value) -> RemoteFile {
             .filter(|link| !link.is_empty())
             .map(str::to_string),
     }
-}
-
-fn link_for_entry(entry: &Value, hint: &PlayHint) -> Result<Option<String>, DebridError> {
-    let remote = remote_files(entry);
-    let files: Vec<DebridFile> = remote
-        .iter()
-        .map(|file| DebridFile {
-            path: file.path.clone(),
-            size: file.size,
-        })
-        .collect();
-    match pick_file(&files, hint) {
-        PickOutcome::Empty => {
-            // O TS audita mesmo sem arquivo escolhido (lista vazia não condena).
-            crate::play_audit::assert_dubbed(&files, hint)?;
-            Ok(None)
-        }
-        PickOutcome::File { path, size } => {
-            crate::play_audit::assert_dubbed(&files, hint)?;
-            Ok(download_link(&remote, &path, size))
-        }
-        PickOutcome::Error {
-            code,
-            evidence,
-            context,
-        } => Err(pick_error(code, evidence, context)),
-    }
-}
-
-fn download_link(files: &[RemoteFile], path: &str, size: f64) -> Option<String> {
-    let mut fallback = None;
-    for file in files {
-        if file.path != path {
-            continue;
-        }
-        if (file.size - size).abs() < 0.5 {
-            return file.link.clone();
-        }
-        if fallback.is_none() {
-            fallback = file.link.clone();
-        }
-    }
-    fallback
 }
 
 fn pick_error(

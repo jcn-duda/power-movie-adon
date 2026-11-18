@@ -120,6 +120,7 @@ mod tests {
             url: Some("https://cdn.test/a".into()),
             unavailable: false,
             files: Some(vec![file("A/a.mkv", 10.0)]),
+            parts: None,
         };
         assert_eq!(
             played_json(&ready),

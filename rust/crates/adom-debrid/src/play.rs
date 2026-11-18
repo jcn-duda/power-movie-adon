@@ -143,22 +143,18 @@ pub async fn resolve_held(
             .resolve_play(api_key, info_hash, hint, rich.as_deref())
             .await?
             .into_outcome()),
-        "realdebrid" => {
-            let url = RealDebrid::new(client)
-                .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)
-                .await?;
-            Ok(PlayOutcome::from_url(url))
-        }
+        "realdebrid" => Ok(RealDebrid::new(client)
+            .resolve_play(api_key, info_hash, hint, rich.as_deref(), poll_wait)
+            .await?
+            .into_outcome()),
         "torbox" => Ok(TorBox::new(client)
             .resolve_play(api_key, info_hash, hint, rich.as_deref(), poll_wait)
             .await?
             .into_outcome()),
-        "debridlink" => {
-            let url = DebridLink::new(client)
-                .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)
-                .await?;
-            Ok(PlayOutcome::from_url(url))
-        }
+        "debridlink" => Ok(DebridLink::new(client)
+            .resolve_play(api_key, info_hash, hint, rich.as_deref(), poll_wait)
+            .await?
+            .into_outcome()),
         "alldebrid" => {
             // O hold volátil do autofetch mora no Node; sem o fato, `held:
             // true` é o lado seguro (não apaga o download de ninguém). O frio
@@ -175,7 +171,7 @@ pub async fn resolve_held(
                 url: played.url,
                 unavailable: played.unavailable,
                 files: played.files,
-                parts: None,
+                parts: played.parts,
             })
         }
         // Serviço desconhecido: `current()` do Node também devolve null.

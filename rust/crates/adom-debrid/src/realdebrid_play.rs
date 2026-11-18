@@ -15,17 +15,21 @@ use super::{
     find_ready, form_encode, id_text, js_number, truthy_id, RealDebrid, READY, WAITING, WORKING,
 };
 use crate::error::DebridError;
+use crate::play::PlayLink;
+
+#[path = "realdebrid_disc.rs"]
+mod disc;
 
 impl RealDebrid {
     /// Sem gate. `poll_wait` ocupa o lugar dos 700 ms do `pollTorrent`.
-    pub async fn resolve_link(
+    pub async fn resolve_play(
         &self,
         api_key: &str,
         hash: &str,
         hint: &PlayHint,
         magnet: Option<&str>,
         poll_wait: Duration,
-    ) -> Result<Option<String>, DebridError> {
+    ) -> Result<PlayLink, DebridError> {
         self.usable_base()?;
         let ready = match self.list_torrents(api_key).await {
             Ok(rows) => find_ready(&rows, hash),
@@ -41,7 +45,7 @@ impl RealDebrid {
             .call(api_key, Method::POST, "/torrents/addMagnet", Some(body))
             .await?;
         let Some(id) = added.as_ref().and_then(truthy_id) else {
-            return Ok(None);
+            return Ok(PlayLink::Url(None));
         };
         let info = match poll_torrent(self, api_key, &id, hint, poll_wait).await {
             Ok(info) => info,
@@ -121,7 +125,10 @@ async fn select_waiting(
             code,
             evidence,
             context,
-        } => return Err(pick_error(code, evidence, context)),
+        } => match disc::select_param(&files, code) {
+            Some(ids) => ids,
+            None => return Err(pick_error(code, evidence, context)),
+        },
     };
     let body = format!("files={}", form_encode(&files_param)).into_bytes();
     let path = format!("/torrents/selectFiles/{id}");
@@ -135,9 +142,9 @@ async fn finish_resolve(
     api_key: &str,
     info: &Value,
     hint: &PlayHint,
-) -> Result<Option<String>, DebridError> {
+) -> Result<PlayLink, DebridError> {
     if status_of(info) != READY {
-        return Ok(None);
+        return Ok(PlayLink::Url(None));
     }
     // Ordem do TS (`finishResolve`): a prova de áudio roda sobre os arquivos
     // SELECIONADOS (é o que `links` representa), antes de refinar a escolha;
@@ -145,14 +152,17 @@ async fn finish_resolve(
     let files = rd_files(info);
     let selected: Vec<&RdFile> = files.iter().filter(|file| file.selected).collect();
     crate::play_audit::assert_dubbed(&as_debrid_ref(&selected), hint)?;
+    if let Some(parts) = disc::finish(rd, api_key, info, &selected).await? {
+        return Ok(PlayLink::Disc(parts));
+    }
     let Some(link) = chosen_link(info, hint)? else {
-        return Ok(None);
+        return Ok(PlayLink::Url(None));
     };
     let body = format!("link={}", form_encode(&link)).into_bytes();
     let data = rd
         .call(api_key, Method::POST, "/unrestrict/link", Some(body))
         .await?;
-    Ok(download_of(data.as_ref()))
+    Ok(PlayLink::Url(download_of(data.as_ref())))
 }
 
 fn chosen_link(info: &Value, hint: &PlayHint) -> Result<Option<String>, DebridError> {

@@ -40,6 +40,9 @@ pub use enqueue::EnqueueOutcome;
 mod sweep_api;
 pub use sweep_api::{SizedMagnet, SweepFile, SweepMagnet};
 
+#[path = "alldebrid_unlock.rs"]
+mod unlock;
+
 #[path = "alldebrid_parse.rs"]
 mod parse;
 use parse::{
@@ -120,6 +123,8 @@ pub struct PlayResult {
     pub unavailable: bool,
     /// Lista do torrent pronto (`recordFileEvidence`), quando o TS a gravaria.
     pub files: Option<Vec<PlayFile>>,
+    /// DVD (`VIDEO_TS`): um link desbloqueado por VOB do título principal.
+    pub parts: Option<Vec<crate::play::DiscPart>>,
 }
 
 /// Erro do play. A mentira de dublagem leva a lista: no TS a prova é gravada
@@ -342,59 +347,5 @@ impl AllDebrid {
             );
         }
         true
-    }
-
-    async fn unlock_picked(
-        &self,
-        api_key: &str,
-        magnet: &Value,
-        hint: &PlayHint,
-    ) -> Result<PlayResult, PlayError> {
-        let mut leaves = Vec::new();
-        if let Some(files) = magnet.get("files").and_then(Value::as_array) {
-            flatten(files, "", &mut leaves);
-        }
-        let picked = pick_file(&as_debrid(&leaves), hint);
-        // Ordem do TS: `pickFile` lança antes da prova (sem vídeo, episódio);
-        // depois dele a lista é gravada mesmo se a dublagem mentir.
-        let files = Some(play_files(&leaves));
-        match picked {
-            PickOutcome::Empty => Ok(PlayResult {
-                files,
-                ..PlayResult::default()
-            }),
-            PickOutcome::Error {
-                code,
-                evidence,
-                context,
-            } => Err(pick_error(code, evidence, context).into()),
-            PickOutcome::File { path, size } => {
-                // A prova é o caminho do arquivo. Mentira sai antes do
-                // unlock: não abre o link, não apaga o torrent, não marca.
-                if let Err(error) = play_audit::assert_dubbed(&as_debrid(&leaves), hint) {
-                    return Err(PlayError { error, files });
-                }
-                let Some(link) = leaf_link(&leaves, &path, size) else {
-                    return Ok(PlayResult {
-                        files,
-                        ..PlayResult::default()
-                    });
-                };
-                let unlocked = self
-                    .call(
-                        api_key,
-                        "/link/unlock",
-                        &[("link", &link)],
-                        CALL_TIMEOUT,
-                        false,
-                    )
-                    .await?;
-                Ok(PlayResult {
-                    url: nonempty(unlocked.get("link")),
-                    unavailable: false,
-                    files,
-                })
-            }
-        }
     }
 }
