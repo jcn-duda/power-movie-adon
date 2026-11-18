@@ -39,6 +39,39 @@ pub struct PlayOutcome {
     pub parts: Option<Vec<DiscPart>>,
 }
 
+/// Play de um adaptador: link único (ou nada, ainda baixando) ou as partes de
+/// um DVD (`VIDEO_TS`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlayLink {
+    Url(Option<String>),
+    Disc(Vec<DiscPart>),
+}
+
+impl PlayLink {
+    fn into_outcome(self) -> PlayOutcome {
+        match self {
+            PlayLink::Url(url) => PlayOutcome::from_url(url),
+            PlayLink::Disc(parts) => PlayOutcome {
+                parts: Some(parts),
+                ..PlayOutcome::default()
+            },
+        }
+    }
+}
+
+/// Kill-switch das partes de DVD (`DEBRID_DVD_PARTS=false` volta ao
+/// `no_video`). Ligado por padrão: sem isto o DVD falha do mesmo jeito.
+pub(crate) fn dvd_parts_enabled() -> bool {
+    !matches!(
+        std::env::var("DEBRID_DVD_PARTS")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "false" | "0" | "off"
+    )
+}
+
 /// Uma parte de DVD: link direto do debrid, tamanho e nome do VOB.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct DiscPart {
@@ -106,30 +139,20 @@ pub async fn resolve_held(
     // sem nome e sem os trackers do release (TorBox/Premiumize, 2026-11-16).
     let rich = crate::magnet_uri::stored_rich(info_hash);
     match service {
-        "premiumize" => {
-            let url = Premiumize::new(client)
-                .resolve_link(api_key, info_hash, hint, rich.as_deref())
-                .await?;
-            Ok(PlayOutcome::from_url(url))
-        }
+        "premiumize" => Ok(Premiumize::new(client)
+            .resolve_play(api_key, info_hash, hint, rich.as_deref())
+            .await?
+            .into_outcome()),
         "realdebrid" => {
             let url = RealDebrid::new(client)
                 .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)
                 .await?;
             Ok(PlayOutcome::from_url(url))
         }
-        "torbox" => {
-            let played = TorBox::new(client)
-                .resolve_play(api_key, info_hash, hint, rich.as_deref(), poll_wait)
-                .await?;
-            Ok(match played {
-                crate::torbox::TorboxLink::Url(url) => PlayOutcome::from_url(url),
-                crate::torbox::TorboxLink::Disc(parts) => PlayOutcome {
-                    parts: Some(parts),
-                    ..PlayOutcome::default()
-                },
-            })
-        }
+        "torbox" => Ok(TorBox::new(client)
+            .resolve_play(api_key, info_hash, hint, rich.as_deref(), poll_wait)
+            .await?
+            .into_outcome()),
         "debridlink" => {
             let url = DebridLink::new(client)
                 .resolve_link(api_key, info_hash, hint, rich.as_deref(), poll_wait)

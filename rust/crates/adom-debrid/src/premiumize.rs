@@ -171,6 +171,15 @@ impl Premiumize {
         magnet: Option<&str>,
     ) -> Result<Option<String>, DebridError> {
         let files = self.directdl(api_key, hash, magnet, CALL_TIMEOUT).await?;
+        self.link_from(files, hint)
+    }
+
+    /// Escolha do arquivo e link sobre a lista do `directdl` (sem rede).
+    fn link_from(
+        &self,
+        files: Vec<ContentFile>,
+        hint: &PlayHint,
+    ) -> Result<Option<String>, DebridError> {
         let view = as_debrid(&files);
         // Ordem do TS: `pickFile` lança antes da auditoria de áudio; a
         // auditoria roda mesmo quando a escolha volta vazia.
@@ -268,6 +277,9 @@ impl Premiumize {
 #[path = "premiumize_http.rs"]
 mod http_support;
 use http_support::*;
+
+#[path = "premiumize_disc.rs"]
+mod disc;
 
 #[path = "premiumize_autofetch.rs"]
 pub(crate) mod autofetch;

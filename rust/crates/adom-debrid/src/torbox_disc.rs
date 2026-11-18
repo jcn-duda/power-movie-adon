@@ -4,7 +4,7 @@
 //! partes no player (Media3 `ConcatenatingMediaSource2` / mpv `edl://`). Nenhum
 //! byte de vídeo passa pelo servidor.
 //!
-//! Kill-switch: `DEBRID_DVD_PARTS=false` volta ao `NoVideo` de antes.
+//! Kill-switch: `DEBRID_DVD_PARTS=false` (`play::dvd_parts_enabled`).
 
 use adom_core::{
     base_name, dvd_title_parts, pick_file, DebridFile, PickCode, PickOutcome, PlayHint,
@@ -18,13 +18,8 @@ use super::{TorBox, CALL_TIMEOUT};
 use crate::error::DebridError;
 use crate::play::DiscPart;
 
-/// Resultado do play do TorBox: link único (ou nada, ainda baixando) ou as
-/// partes de um DVD.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TorboxLink {
-    Url(Option<String>),
-    Disc(Vec<DiscPart>),
-}
+/// O enum é o comum do play (`PlayLink`); o nome antigo fica para os testes.
+pub use crate::play::PlayLink as TorboxLink;
 
 impl TorBox {
     /// Contrato antigo (rota `/debrid/link`): um link só. DVD não cabe nele e
@@ -112,7 +107,7 @@ impl TorBox {
         files: &[DebridFile],
         code: PickCode,
     ) -> Result<Option<Vec<DiscPart>>, DebridError> {
-        if code != PickCode::NoVideo || !dvd_parts_enabled() {
+        if code != PickCode::NoVideo || !crate::play::dvd_parts_enabled() {
             return Ok(None);
         }
         let Some(parts) = dvd_title_parts(files) else {
@@ -150,16 +145,4 @@ impl TorBox {
         }
         Ok(Some(out))
     }
-}
-
-/// Ligado por padrão: sem isto o DVD falha do mesmo jeito (`NoVideo`).
-fn dvd_parts_enabled() -> bool {
-    !matches!(
-        std::env::var("DEBRID_DVD_PARTS")
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "false" | "0" | "off"
-    )
 }
