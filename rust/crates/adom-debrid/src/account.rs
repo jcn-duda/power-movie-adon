@@ -49,6 +49,11 @@ pub struct InventoryItem {
     pub size: f64,
     /// Id do torrent na conta (o RD usa no play): preservado, nunca no título.
     pub id: Option<String>,
+    /// Nome do MAIOR vídeo do torrent, quando o serviço lista arquivos na
+    /// mesma chamada (TorBox, Debrid-Link). O título do torrent pode não ter
+    /// ano ("Night of the Living Dead Dublado mp4 1080p") e o arquivo tê-lo
+    /// ("A Noite dos Mortos Vivos (1990) …"): é a prova do filme certo.
+    pub main_file: Option<String>,
 }
 
 /// Veredito da leitura do inventário.

@@ -237,6 +237,9 @@ pub fn br_origin_only(signals: &AccountSignals) -> bool {
     !signals.pt_audio && !signals.explicit_foreign && !signals.legendado && signals.br_origin
 }
 
+#[path = "account_year.rs"]
+mod year;
+
 /// Filtra o inventário e devolve os itens no shape do `account.search` do TS:
 /// `seeders:1`, `tracker` = label do serviço, `indexer:'debrid'`,
 /// `fromAccount:true`, `isBr` = `looksPtBr || brOriginOnly`.
@@ -278,6 +281,7 @@ pub fn account_raw_items(
     outcome
         .kept
         .iter()
+        .filter(|&&index| !year::file_year_contradicts(&items[index], meta, &year))
         .map(|&index| {
             let item = &items[index];
             let signals = &signals[index];

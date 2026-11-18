@@ -36,6 +36,7 @@ fn inventory() -> Arc<StubInventory> {
                 info_hash: HASH_CONTA.into(),
                 size: 4_000_000_000.0,
                 id: None,
+                main_file: None,
             }],
             known: true,
             unusable: None,

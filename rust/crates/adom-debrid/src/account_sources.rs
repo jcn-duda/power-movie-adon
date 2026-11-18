@@ -94,6 +94,7 @@ async fn torbox_items(
         if !(js_truthy(row.get("download_finished")) || js_truthy(row.get("download_present"))) {
             continue;
         }
+        let before = out.len();
         push_item(
             &mut out,
             text_of(row.get("hash")),
@@ -101,6 +102,7 @@ async fn torbox_items(
             js_number_or_zero(row.get("size")),
             None,
         );
+        set_main_file(&mut out, before, row.get("files"));
     }
     Ok(out)
 }
@@ -156,7 +158,9 @@ async fn debridlink_items(
         } else {
             js_number_or_zero(row.get("size"))
         };
+        let before = out.len();
         push_item(&mut out, hash, text_of(row.get("name")), size, None);
+        set_main_file(&mut out, before, row.get("files"));
     }
     Ok(out)
 }
@@ -190,7 +194,31 @@ fn push_item(
         info_hash,
         size,
         id,
+        main_file: None,
     });
+}
+
+/// Grava o maior vídeo (sem sample) no item recém-empurrado. `short_name`
+/// (TorBox) ou `name`; tamanho em `size`. Sem lista, fica `None`.
+fn set_main_file(out: &mut [InventoryItem], before: usize, files: Option<&Value>) {
+    if out.len() <= before {
+        return;
+    }
+    let Some(list) = files.and_then(Value::as_array) else {
+        return;
+    };
+    let main = list
+        .iter()
+        .filter_map(|file| {
+            let name = text_of(file.get("short_name")).or_else(|| text_of(file.get("name")))?;
+            let video = adom_core::is_video(&name) && !adom_core::is_sample(&name);
+            video.then(|| (js_number_or_zero(file.get("size")), name))
+        })
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, name)| adom_core::base_name(&name));
+    if let Some(item) = out.last_mut() {
+        item.main_file = main;
+    }
 }
 
 /// `Value` → string não vazia, com trim? O TS faz `String(x || '')` sem trim
@@ -242,5 +270,34 @@ fn js_truthy(value: Option<&Value>) -> bool {
         Some(Value::Number(number)) => number.as_f64().is_some_and(|n| n != 0.0 && !n.is_nan()),
         Some(Value::String(text)) => !text.is_empty(),
         Some(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod main_file_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn maior_video_sem_sample_vira_main_file() {
+        let mut out = vec![InventoryItem::default()];
+        let files = json!([
+            {"short_name": "A Noite dos Mortos Vivos (1990) BDrip 1080p Dublado dat2014.mp4", "size": 1_200_000_000u64},
+            {"short_name": "A Noite dos Mortos Vivos (1990) BDrip 1080p Dublado dat2014.srt", "size": 90_000},
+            {"short_name": "sample.mkv", "size": 1_900_000_000u64},
+            {"short_name": "LEIA -ME.txt", "size": 100}
+        ]);
+        set_main_file(&mut out, 0, Some(&files));
+        assert_eq!(
+            out[0].main_file.as_deref(),
+            Some("A Noite dos Mortos Vivos (1990) BDrip 1080p Dublado dat2014.mp4")
+        );
+    }
+
+    #[test]
+    fn item_descartado_nao_recebe_arquivo_de_outro() {
+        let mut out = vec![InventoryItem::default()];
+        set_main_file(&mut out, 1, Some(&json!([{"name": "x.mkv", "size": 1}])));
+        assert_eq!(out[0].main_file, None);
     }
 }

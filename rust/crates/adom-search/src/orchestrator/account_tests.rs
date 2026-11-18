@@ -48,6 +48,7 @@ fn items(rows: &[(&str, &str)]) -> Vec<InventoryItem> {
             info_hash: (*hash).to_string(),
             size: 4_000_000_000.0,
             id: None,
+            main_file: None,
         })
         .collect()
 }

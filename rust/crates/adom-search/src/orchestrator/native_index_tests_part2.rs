@@ -174,6 +174,7 @@ impl AccountInventorySource for FakeAccount {
                     info_hash: "a".repeat(40),
                     size: 1_000.0,
                     id: None,
+                    main_file: None,
                 }],
             })
         })
