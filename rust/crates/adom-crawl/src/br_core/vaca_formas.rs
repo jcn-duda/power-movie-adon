@@ -78,8 +78,16 @@ pub fn decode_data_u(html: &str) -> Option<String> {
 }
 
 static SEASON_INTERNAL_WORD: LazyLock<Regex> = LazyLock::new(|| compile(r"{B}season-internal{B}"));
+// O token de URL INTEIRO em volta do `season-internal/?show=N`, não só o
+// fragmento. O TS (`vacatorrent-shapes.ts:32`) capturava o fragmento e o
+// resolvia contra a URL do post: com o post em `/pt/tv-shows/<slug>/` isso dava
+// `/pt/tv-shows/<slug>/season-internal/?show=N`, que é 404. Passou despercebido
+// enquanto o post trazia o `data-u`; em 2026-11 o site tirou o `data-u` e TODA
+// série nova do Vaca ficou presa em `http_404` (medido em produção: 84 séries).
+// `(`/`)` ficam fora para o token não engolir a URL citada entre parênteses.
 static SEASON_INTERNAL_HREF: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)season-internal/\?show=[0-9]+").expect("regex season-internal href")
+    Regex::new(r#"(?i)[^\s"'<>()]*season-internal/\?show=[0-9]+"#)
+        .expect("regex season-internal href")
 });
 static SHORTLINK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\?p=([0-9]{4,})").expect("regex shortlink"));
@@ -300,6 +308,30 @@ mod tests {
                 Some("https://vaqueirofilmes1.com")
             ),
             Some("https://vaqueirofilmes1.com/movie-links/12345/".to_string())
+        );
+    }
+
+    /// Post de série sem `data-u` (layout de 2026-11): o href absoluto do
+    /// season-internal vale como está, e não pode ser resolvido como relativo à
+    /// URL do post — `/pt/tv-shows/stick/season-internal/...` é 404.
+    #[test]
+    fn season_internal_absoluto_nao_vira_relativo_ao_post() {
+        let post = r#"<a class="mf-top-btn" href="https://vaqueirofilmes.com/pt/season-internal/?show=66416">Temporadas</a>"#;
+        assert_eq!(
+            series_season_internal_url(post, Some("https://vaqueirofilmes.com/pt/tv-shows/stick/")),
+            Some("https://vaqueirofilmes.com/pt/season-internal/?show=66416".to_string())
+        );
+        // Caminho absoluto sem host resolve contra a raiz do host do post.
+        let rel = r#"<a href="/pt/season-internal/?show=7">x</a>"#;
+        assert_eq!(
+            series_season_internal_url(rel, Some("https://vaqueirofilmes.com/pt/tv-shows/x/")),
+            Some("https://vaqueirofilmes.com/pt/season-internal/?show=7".to_string())
+        );
+        // URL citada entre parênteses em texto: o parêntese não entra no token.
+        let txt = "(https://vaqueirofilmes.com/pt/season-internal/?show=9), veja";
+        assert_eq!(
+            series_season_internal_url(txt, Some("https://vaqueirofilmes1.com")),
+            Some("https://vaqueirofilmes.com/pt/season-internal/?show=9".to_string())
         );
     }
 
