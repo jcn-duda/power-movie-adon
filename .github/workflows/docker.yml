@@ -13,7 +13,10 @@
 name: Docker
 
 on:
+  # Build da imagem é o mais caro de todos: em push só roda na main. Nas branches
+  # de trabalho ele entra pelo PR (ou pelo botão Run workflow).
   push:
+    branches: [main]
     paths:
       - 'Dockerfile'
       - 'docker-compose.yml'
@@ -51,9 +54,16 @@ on:
       - '.github/workflows/docker.yml'
   workflow_dispatch:
 
+# Push novo na mesma branch cancela a execução anterior: só o último commit
+# importa, e o resto era minuto do Actions queimado à toa.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
