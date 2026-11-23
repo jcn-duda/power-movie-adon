@@ -39,7 +39,17 @@ use adom_crawl::page_engine::CrawlPageEngine;
 use adom_crawl::protector_follow::ProtectorFollow;
 use adom_crawl::sidecar::server::AppState;
 use adom_crawl::sidecar::SidecarHttpClient;
-use adom_crawl::store::CrawlStore;
+use adom_crawl::store::{CrawlStore, StoreError};
+
+/// Loga um reparo único de boot. Falha não impede o boot, e o marcador de
+/// cada reparo só grava no sucesso: a próxima subida tenta de novo.
+fn reparo(resultado: Result<u32, StoreError>, alvo: &str, o_que: &str) {
+    match resultado {
+        Ok(0) => {}
+        Ok(n) => eprintln!("[adom-sidecar] {alvo}: {n} {o_que}"),
+        Err(e) => eprintln!("[adom-sidecar] {alvo}: reparo falhou ({o_que}): {e}"),
+    }
+}
 
 /// Lê uma variável de ambiente com valor padrão.
 fn env_or(key: &str, default: &str) -> String {
@@ -125,53 +135,33 @@ async fn main() {
         process::exit(1);
     }
 
-    // Reparo único do Vaca: falha não impede o boot, e o marcador só grava no
-    // sucesso, então a próxima subida tenta de novo.
-    match store.repair_vaca_no_torrent_once() {
-        Ok(0) => {}
-        Ok(n) => eprintln!("[adom-sidecar] vacatorrent: {n} página(s) no-torrent de volta à fila"),
-        Err(e) => eprintln!("[adom-sidecar] vacatorrent: reparo falhou: {e}"),
-    }
-
-    // Reparo único das tries de adiamento: o motor antigo debitou `tries` em
-    // 429 (Retry-After) e ~471 páginas ficaram a uma re-429 de virar `error`
-    // terminal. Mesma régua do reparo acima: falha não impede o boot.
-    match store.repair_http429_once() {
-        Ok(0) => {}
-        Ok(n) => eprintln!("[adom-sidecar] http429: {n} página(s) com tries de adiamento zeradas"),
-        Err(e) => eprintln!("[adom-sidecar] http429: reparo falhou: {e}"),
-    }
-
-    // Reparo único das filas presas do Mico: fantasmas `done/releases=0`
-    // (conclusão falsa do motor antigo) e `partial` legado que o take_next
-    // nunca serve. Mesma régua dos reparos acima: falha não impede o boot.
-    match store.repair_mico_stuck_once() {
-        Ok(0) => {}
-        Ok(n) => eprintln!("[adom-sidecar] mico: {n} obra(s) presas de volta à fila"),
-        Err(e) => eprintln!("[adom-sidecar] mico: reparo falhou: {e}"),
-    }
-
-    match store.repair_mico_truncated_once() {
-        Ok(0) => {}
-        Ok(n) => eprintln!("[adom-sidecar] mico: {n} série(s) parcial(is) retomada(s)"),
-        Err(e) => eprintln!("[adom-sidecar] mico: reparo de séries falhou: {e}"),
-    }
-
-    // Reparo único dos portões BLUDV expirados persistentes (tries>=10 com
-    // veredito "expirado"): TTL ~30 dias, a fila antiga nunca drenaria a tempo.
-    match store.repair_gate_expired_once() {
-        Ok(0) => {}
-        Ok(n) => eprintln!("[adom-sidecar] bludv: {n} portão(ões) expirado(s) viraram terminal"),
-        Err(e) => eprintln!("[adom-sidecar] bludv: reparo de portões falhou: {e}"),
-    }
-
-    // Reparo único das linhas presas legadas: fantasmas done/releases=0 e
-    // erros terminais retentáveis (whitelist medida em 2026-11-15).
-    match store.repair_stuck_legacy_once() {
-        Ok(0) => {}
-        Ok(n) => eprintln!("[adom-sidecar] {n} linha(s) presas de volta à fila (legado)"),
-        Err(e) => eprintln!("[adom-sidecar] reparo de linhas presas falhou: {e}"),
-    }
+    // Reparos únicos de boot (régua em `reparo`):
+    // - Vaca: no-torrent antigas de volta à fila;
+    // - 429: o motor antigo debitou `tries` em Retry-After e ~471 páginas
+    //   ficaram a uma re-429 de virar `error` terminal;
+    // - Mico presas: fantasmas `done/releases=0` (conclusão falsa do motor
+    //   antigo) e `partial` legado que o take_next nunca serve;
+    // - Mico truncadas: séries em erro após um passe, com progresso preservado;
+    // - BLUDV: portões expirados persistentes (tries>=10, veredito "expirado"),
+    //   TTL ~30 dias, que a fila antiga nunca drenaria a tempo;
+    // - legado: fantasmas done/releases=0 e erros terminais retentáveis
+    //   (whitelist medida em 2026-11-15).
+    let vaca = store.repair_vaca_no_torrent_once();
+    reparo(vaca, "vacatorrent", "página(s) no-torrent de volta à fila");
+    let http429 = store.repair_http429_once();
+    reparo(
+        http429,
+        "http429",
+        "página(s) com tries de adiamento zeradas",
+    );
+    let presas = store.repair_mico_stuck_once();
+    reparo(presas, "mico", "obra(s) presas de volta à fila");
+    let truncadas = store.repair_mico_truncated_once();
+    reparo(truncadas, "mico", "série(s) parcial(is) retomada(s)");
+    let portoes = store.repair_gate_expired_once();
+    reparo(portoes, "bludv", "portão(ões) expirado(s) viraram terminal");
+    let legado = store.repair_stuck_legacy_once();
+    reparo(legado, "legado", "linha(s) presas de volta à fila");
 
     // ── 4. Cria o cliente HTTP ───────────────────────────────────────
     // O cliente será integrado ao motor quando o Agente 1 conectar a camada HTTP.

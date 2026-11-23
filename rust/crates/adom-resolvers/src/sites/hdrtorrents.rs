@@ -54,6 +54,15 @@ pub struct Hdr;
 
 pub static HDR: Hdr = Hdr;
 
+/// URL de busca do HDR: o form é `index.php?busca=` (medido em 2026-11-23); o
+/// `/?s=` é ignorado e devolve os lançamentos.
+pub fn search_url(mut url: Url, query: &str) -> Result<String, String> {
+    url.set_path("/index.php");
+    let encoded = crate::common::encode_uri_component(query);
+    url.set_query(Some(&format!("busca={encoded}")));
+    Ok(url.to_string())
+}
+
 // ─── regex da listagem (paridade com o JS) ─────────────────────────────────
 
 static BLOCK: LazyLock<Regex> = LazyLock::new(|| {
