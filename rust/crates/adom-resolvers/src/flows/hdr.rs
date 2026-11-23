@@ -1,13 +1,25 @@
-//! Busca do HDR Torrents (`resolvers/profiles/hdrtorrents.ts`): a busca do
-//! site é quebrada, então o catálogo é raspado pela LISTAGEM (`/`,
-//! `/pagina/N/`) e a query casa localmente. Cache com SWR: vencido, a busca
-//! usa o último catálogo bom na hora e o refresh corre em fundo, com prazo
-//! longo (ninguém espera); só o cold start paga o prazo curto.
+//! Busca do HDR Torrents (`resolvers/profiles/hdrtorrents.ts`).
+//!
+//! Caminho principal: a busca do site (`index.php?busca=`, medida em
+//! 2026-11-23), que devolve os mesmos cards `media-card-link` da listagem e
+//! cobre o acervo inteiro. Ela é um OR de palavras ordenado por relevância:
+//! token extra (SxxEyy, ano, "1ª Temporada") ou artigo ("the boys") empurra a
+//! obra para fora da 1ª página. Por isso a query do site vai só com o nome, e
+//! uma segunda tentativa sem artigos roda quando a primeira não casa nada.
+//! Só a 1ª página: o resto é lixo parecido ("fall*" para "fallout").
+//!
+//! Fallback: a busca já foi quebrada um dia (o `?s=` é ignorado e devolve os
+//! lançamentos), então se ela falhar ou não casar nada o catálogo é raspado
+//! pela LISTAGEM (`/`, `/pagina/N/`, ~400 obras recentes) e a query casa
+//! localmente. Cache com SWR: vencido, a busca usa o último catálogo bom na
+//! hora e o refresh corre em fundo, com prazo longo (ninguém espera); só o
+//! cold start paga o prazo curto.
 
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use adom_crawl::net::Allowlist;
+use regex::Regex;
 use reqwest::header::{ACCEPT, USER_AGENT};
 use tokio::sync::Mutex;
 
@@ -204,14 +216,124 @@ pub fn warm(profile: &ResolverProfile) {
     });
 }
 
-/// `searchPosts` do HDR: catálogo → match local → conteúdo de cada post.
+static SEASON: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i-u)\bS\d{1,2}(?:E\d{1,2})?\b").expect("SxxEyy"));
+static YEAR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?-u)\b(?:19|20)\d{2}\b").expect("ano"));
+
+/// Artigos que, numa query curta, dominam o OR do site ("the boys" → 20 cards
+/// com "the" e nenhum The Boys; "boys" → The Boys no topo).
+const ARTICLES: &[&str] = &["the", "a", "an", "o", "os", "as", "um", "uma"];
+
+/// Queries que o site recebe, em ordem: só o nome (sem SxxEyy/ano/`:`), e a
+/// mesma sem artigos quando sobra algo diferente. Ano só sai se sobrar nome:
+/// no filme "1917 2019" o primeiro ano É o título.
+pub fn site_queries(query: &str) -> Vec<String> {
+    let no_season = SEASON.replace_all(query, " ").replace(':', " ");
+    let no_year = YEAR.replace_all(&no_season, " ");
+    let bare: Vec<&str> = match no_year.split_whitespace().next() {
+        Some(_) => no_year.split_whitespace().collect(),
+        None => no_season.split_whitespace().collect(),
+    };
+    let mut out = Vec::new();
+    if bare.is_empty() {
+        return out;
+    }
+    out.push(bare.join(" "));
+    let lean: Vec<&str> = bare
+        .iter()
+        .copied()
+        .filter(|t| !ARTICLES.contains(&t.to_lowercase().as_str()))
+        .collect();
+    if !lean.is_empty() && lean.len() != bare.len() {
+        out.push(lean.join(" "));
+    }
+    out
+}
+
+fn to_posts(works: Vec<HdrWork>) -> Vec<SitePost> {
+    works
+        .into_iter()
+        .map(|w| SitePost {
+            title: w.title,
+            url: w.url,
+            poster: w.poster,
+            year: w.year,
+            kind: w.kind.map(str::to_string),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Filtro local da query, igual nos dois caminhos (busca e listagem).
+struct Selection {
+    normalized: String,
+    season: Option<u32>,
+    year: Option<i32>,
+    max_posts: usize,
+}
+
+impl Selection {
+    fn of(site_name: &str, query: &str) -> Self {
+        let rules = search_select::rules_for(site_name);
+        Self {
+            normalized: search_select::normalize_query(query, rules),
+            season: search_select::requested_season(query),
+            year: search_select::requested_year(query),
+            max_posts: rules.max_posts,
+        }
+    }
+
+    /// Ano de OUTRA obra sai ANTES do corte, como no `/?s=` dos outros sites:
+    /// a busca "coringa" lista "Delírio a Dois (2024)" antes de "Coringa
+    /// (2019)", e o corte em 5 tirava o filme pedido da lista.
+    fn apply(&self, works: Vec<HdrWork>) -> Vec<SitePost> {
+        let posts = search_select::filter_year(to_posts(works), |p| p.title.as_str(), self.year);
+        search_select::select_posts(
+            posts,
+            |p| p.title.as_str(),
+            &self.normalized,
+            self.season,
+            self.max_posts,
+        )
+    }
+}
+
+/// Busca do site: posts já filtrados pela query, ou `None` quando a busca
+/// falhou ou não casou nada (aí quem responde é a listagem).
+async fn search_site(
+    profile: &ResolverProfile,
+    query: &str,
+    sel: &Selection,
+) -> Option<Vec<SitePost>> {
+    let base = profile.selector.url();
+    for q in site_queries(query) {
+        let html = match profile.search_html(&q).await {
+            Ok(html) => html,
+            Err(e) => {
+                eprintln!("[resolver] hdrtorrents: busca do site falhou ({e}); usando a listagem");
+                return None;
+            }
+        };
+        let posts = sel.apply(parse_listing_html(&html, &base).unwrap_or_default());
+        if !posts.is_empty() {
+            profile.selector.note_success();
+            return Some(posts);
+        }
+    }
+    None
+}
+
+/// `searchPosts` do HDR: busca do site → (fallback) catálogo → match local →
+/// conteúdo de cada post.
 pub async fn search_items(
     profile: &ResolverProfile,
     query: &str,
 ) -> Result<Vec<SearchItem>, String> {
-    let rules = search_select::rules_for(&profile.site_name);
-    let season = search_select::requested_season(query);
-    let normalized = search_select::normalize_query(query, rules);
+    let sel = Selection::of(&profile.site_name, query);
+    if let Some(posts) = search_site(profile, query, &sel).await {
+        return profile.items_for_posts(posts, sel.season).await;
+    }
     let (works, _partial) = match listings(profile).await {
         Ok(found) => {
             profile.selector.note_success();
@@ -222,23 +344,9 @@ pub async fn search_items(
             return Err(e);
         }
     };
-    let posts: Vec<SitePost> = works
-        .into_iter()
-        .map(|w| SitePost {
-            title: w.title,
-            url: w.url,
-            poster: w.poster,
-            year: w.year,
-            kind: w.kind.map(str::to_string),
-            ..Default::default()
-        })
-        .collect();
-    let posts = search_select::select_posts(
-        posts,
-        |p| p.title.as_str(),
-        &normalized,
-        season,
-        rules.max_posts,
-    );
-    profile.items_for_posts(posts, season).await
+    profile.items_for_posts(sel.apply(works), sel.season).await
 }
+
+#[cfg(test)]
+#[path = "hdr_tests.rs"]
+mod tests;

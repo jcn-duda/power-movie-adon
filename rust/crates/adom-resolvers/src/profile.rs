@@ -136,6 +136,14 @@ impl ResolverProfile {
             // higienizado (sem `:`) do `sanitize_term`.
             return crate::sites::torrentgalaxy::search_url(&base, query);
         }
+        if self.site_name == "hdrtorrents" {
+            // O form do HDR é `index.php?busca=` (medido em 2026-11-23); o
+            // `/?s=` é ignorado e devolve os lançamentos.
+            url.set_path("/index.php");
+            let encoded = crate::common::encode_uri_component(query);
+            url.set_query(Some(&format!("busca={encoded}")));
+            return Ok(url.to_string());
+        }
         url.set_path("/");
         // Mesmo encoding do TS: `encodeURIComponent` → espaço vira `%20`.
         // `query_pairs_mut` segue form-urlencoded (espaço → '+'), que o
