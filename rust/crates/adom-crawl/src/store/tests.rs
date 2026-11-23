@@ -311,6 +311,11 @@ fn releases_somam_na_continuacao_da_serie() {
             &mark("partial", 7, r#"{"v":1}"#, 1),
         )
         .expect("passe 1");
+    let after = store
+        .take_next("test-site")
+        .expect("take")
+        .expect("partial");
+    assert_eq!(after.tries, 0, "avanço não consome tentativas de falha");
     store
         .mark_result("test-site", &row.url_key, &mark("done", 0, r#"{"v":1}"#, 0))
         .expect("passe final");

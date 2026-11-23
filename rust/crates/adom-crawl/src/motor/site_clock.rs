@@ -257,7 +257,8 @@ impl MarkResult {
         // em backoff até o recuo longo de 7 dias (≥ 20 tentativas), como os
         // persistentes. "protetor: HTTP 404" não começa com o rótulo e segue
         // esgotável normal.
-        let perene = error.starts_with("http_404");
+        let perene =
+            error.starts_with("http_404") || error.starts_with("ingest: catalogo-indisponivel");
         let esgotado = tentativas >= cfg.max_tries.max(1) && !perene;
         // Fase 0: 429/503 NUNCA é esgotamento — o site pediu espera, não a URL
         // morreu. Chega aqui pelo caminho textual (sub-fetch do Vaca, adapters
@@ -276,7 +277,8 @@ impl MarkResult {
         Self {
             status: "error".to_string(),
             releases: 0,
-            progress: String::new(),
+            // Só o progresso do passe anterior foi confirmado pela ingestão.
+            progress: row.progress.clone(),
             error: if error.is_empty() {
                 "erro".to_string()
             } else {

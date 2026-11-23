@@ -151,6 +151,12 @@ async fn main() {
         Err(e) => eprintln!("[adom-sidecar] mico: reparo falhou: {e}"),
     }
 
+    match store.repair_mico_truncated_once() {
+        Ok(0) => {}
+        Ok(n) => eprintln!("[adom-sidecar] mico: {n} série(s) parcial(is) retomada(s)"),
+        Err(e) => eprintln!("[adom-sidecar] mico: reparo de séries falhou: {e}"),
+    }
+
     // Reparo único dos portões BLUDV expirados persistentes (tries>=10 com
     // veredito "expirado"): TTL ~30 dias, a fila antiga nunca drenaria a tempo.
     match store.repair_gate_expired_once() {

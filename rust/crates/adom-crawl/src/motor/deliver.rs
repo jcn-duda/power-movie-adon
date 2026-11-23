@@ -45,16 +45,16 @@ pub(super) async fn deliver_page(
                 "[motor] ingestão pediu reentrega de {}: {motivo}",
                 work.url_key
             );
-            if work.error.is_empty() {
-                work.error = format!("ingest: {motivo}");
-            }
+            work.error = if report.mark == Some(crate::ingest::PageMark::Unavailable) {
+                format!("ingest: catalogo-indisponivel: {motivo}")
+            } else {
+                format!("ingest: {motivo}")
+            };
             false
         }
         Err(err) => {
             eprintln!("[motor] ingestão recusou {}: {err}", work.url_key);
-            if work.error.is_empty() {
-                work.error = format!("ingest: {err}");
-            }
+            work.error = format!("ingest: {err}");
             false
         }
     }

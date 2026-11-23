@@ -318,3 +318,46 @@ fn revisita_devolve_as_no_torrent_mais_velhas_preservando_identidade() {
         0
     );
 }
+
+#[test]
+fn reparo_mico_truncado_preserva_progresso_e_limita_escopo() {
+    let (store, _dir) = temp_store();
+    semear_estado(
+        &store,
+        "mico",
+        "/serie/",
+        "error",
+        8,
+        "series_truncated: teto",
+        0,
+    );
+    semear_estado(
+        &store,
+        "mico",
+        "/outro/",
+        "error",
+        3,
+        "ingest: catalogo-sem-nomes",
+        0,
+    );
+    semear_estado(
+        &store,
+        "outro",
+        "/serie/",
+        "error",
+        3,
+        "series_truncated: teto",
+        0,
+    );
+    assert_eq!(store.repair_mico_truncated_once().unwrap(), 1);
+    let (status, tries, next, error, progress, _) = ler(&store, "mico", "/serie/");
+    assert_eq!(
+        (status.as_str(), tries, next, error.as_str()),
+        ("pending", 0, 0, "")
+    );
+    assert_eq!(progress, r#"{"v":1}"#);
+    assert_eq!(store.sum_releases("mico").unwrap(), 11);
+    assert_eq!(ler(&store, "mico", "/outro/").0, "error");
+    assert_eq!(ler(&store, "outro", "/serie/").0, "error");
+    assert_eq!(store.repair_mico_truncated_once().unwrap(), 0);
+}

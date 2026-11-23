@@ -282,3 +282,23 @@ fn antes_do_recuo_longo_vale_backoff_normal() {
         "antes do limiar, o backoff de sempre (cap 6 h da config default)"
     );
 }
+
+#[test]
+fn falha_preserva_apenas_progresso_confirmado() {
+    let mut row = linha("mico", 0);
+    row.progress = "progresso confirmado".into();
+    let mut work = error_work(&row, "ingest: catalogo-indisponivel");
+    work.progress = Some("passe não confirmado".into());
+    let mark = MarkResult::from_work(&row, &work, false, &cfg(3), now_ms());
+    assert_eq!(mark.progress, "progresso confirmado");
+    assert_eq!(mark.releases, 0);
+    assert!(mark.next_at > 0);
+}
+
+#[test]
+fn catalogo_indisponivel_continua_retentavel_apos_limite() {
+    let row = linha("mico", 3);
+    let work = error_work(&row, "ingest: catalogo-indisponivel");
+    let mark = MarkResult::from_work(&row, &work, false, &cfg(3), now_ms());
+    assert!(mark.next_at > 0);
+}

@@ -240,7 +240,8 @@ impl CrawlStore {
              releases=CASE WHEN ?5 <> '' AND progress <> '' \
                       THEN releases + ?3 ELSE ?3 END, \
              error=?4, progress=?5, next_at=?6, \
-             tries=tries+?7, checked_at=?8 WHERE site=?9 AND url_key=?10",
+             tries=CASE WHEN ?11 = 'partial' AND ?6 > 0 THEN 0 ELSE tries+?7 END, \
+             checked_at=?8 WHERE site=?9 AND url_key=?10",
             params![
                 final_status,
                 result.imdb,
@@ -252,6 +253,7 @@ impl CrawlStore {
                 now,
                 site,
                 url_key,
+                result.status,
             ],
         )?;
         Ok(())

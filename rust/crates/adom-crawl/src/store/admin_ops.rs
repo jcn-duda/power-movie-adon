@@ -156,6 +156,25 @@ impl CrawlStore {
         Ok(total)
     }
 
+    /// Retoma séries do Mico que o motor antigo deixou em erro após um passe.
+    /// Preserva o progresso confirmado e só toca o diagnóstico específico.
+    pub fn repair_mico_truncated_once(&self) -> Result<u32, StoreError> {
+        const SITE: &str = "mico";
+        const MARK: &str = "repair:mico-truncated-v1";
+        if self.get_state(SITE, MARK)?.is_some() {
+            return Ok(0);
+        }
+        let report = self.requeue_matching(
+            SITE,
+            "status = 'error' AND error LIKE 'series_truncated:%'",
+            "UPDATE crawl_url SET status = 'pending', tries = 0, next_at = 0, \
+             error = '' WHERE site = ?1 AND status = 'error' \
+             AND error LIKE 'series_truncated:%'",
+        )?;
+        self.set_state(SITE, MARK, &report.requeued.to_string())?;
+        Ok(report.requeued)
+    }
+
     /// Zera site (destrutivo): apaga todas as URLs, estado, rodadas e pendências
     /// de portão do site — EXCETO o veredito da sonda. O TS preservava (leitura
     /// antes do clear e regravação depois, `crawl-actions.ts` `resetSite`) e o
