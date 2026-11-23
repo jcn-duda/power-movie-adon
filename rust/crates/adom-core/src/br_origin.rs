@@ -92,6 +92,33 @@ pub(crate) fn has_pt_signs_canon(t: &str) -> bool {
         || br_mark_re().is_match(t)
 }
 
+// Contexto francês. `Ç` e as preposições também são franceses ("Le Garçon",
+// "Leçons de vie", "Française"), e no `looks_pt_br` o sinal PT PROMOVE a
+// release (`_br` + `_dubbed` + vaga + autofetch).
+fn fr_context_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    compile(
+        &RE,
+        "(?-u:\\b)(LE|LES|DU|DES|UNE|ET|AUX?|AVEC|DANS|SUR|VF[FIQ2]?|VOSTFR|TRUEFRENCH|FRENCH|FRAN[CÇ]AISE?)(?-u:\\b)|[ÈËÎÏÛÙŒ]",
+    )
+}
+
+/// Sinal PT para o caso `Dual` do `looks_pt_br`, que PROMOVE a release a BR
+/// dublada. Mais estreito que `has_pt_signs`, que absolve na limpeza e não
+/// pode encolher: Ã/Õ, vocabulário PT e site BR valem sempre; `Ç` e as
+/// preposições só fora de contexto francês.
+pub(crate) fn has_pt_signs_for_dual(title: &str) -> bool {
+    let t = js_canon(title);
+    let strong = |c: char| c == 'Ã' || c == 'Õ';
+    if t.contains(strong) || pt_vocab_re().is_match(&t) || br_mark_re().is_match(&t) {
+        return true;
+    }
+    if fr_context_re().is_match(&t) {
+        return false;
+    }
+    t.contains('Ç') || pt_stop_re().find_iter(&t).count() >= 2
+}
+
 /// `brOriginMark`: origem BR pelo nome, para NÃO apagar. Marca de site, a
 /// palavra "filme(s)" ou qualquer sinal de `hasPtSigns`.
 pub fn br_origin_mark(title: &str) -> bool {

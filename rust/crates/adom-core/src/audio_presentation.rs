@@ -10,8 +10,8 @@
 //! `audio_from_title` reusa `explicit_pt_audio` (já portado em `pt_audio_guards`)
 //! e implementa a convenção de nome do HDRTorrent (prefixo "Dublada e Dual" ×
 //! marcador LEGENDADA do botão). `looks_pt_br` reusa `audio_from_title`,
-//! `explicit_pt_audio` e `has_pt_signs` (`br_origin`) — nenhuma lista de idioma
-//! duplicada.
+//! `explicit_pt_audio`, `has_explicit_foreign_audio` e `has_pt_signs_for_dual`
+//! (`br_origin`) — nenhuma lista de idioma duplicada.
 //!
 //! Regras de paridade com o JS (sem a flag `u`):
 //! - `\b` é ASCII (`(?-u:\b)`), como em `audio_lang`/`pt_audio_guards`.
@@ -25,10 +25,10 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::br_origin::has_pt_signs;
+use crate::br_origin::has_pt_signs_for_dual;
 use crate::js_text::js_trim;
 use crate::matching_vocabulary::{vocabulary_contents, JS_SPACE};
-use crate::pt_audio_guards::explicit_pt_audio;
+use crate::pt_audio_guards::{explicit_pt_audio, has_explicit_foreign_audio};
 
 /// `\b` do JS sem flag `u`: fronteira ASCII, não a Unicode do crate.
 fn bounded(alts: &str) -> String {
@@ -256,12 +256,20 @@ fn looks_pt_br_with_audio(title: &str, audio: &str) -> bool {
     if audio == "Dublado" || audio == "Nacional" {
         return true;
     }
-    audio == "Dual" && (explicit_pt_audio(title) || has_pt_signs(title))
+    if audio != "Dual" {
+        return false;
+    }
+    if explicit_pt_audio(title) {
+        return true;
+    }
+    !has_explicit_foreign_audio(title) && has_pt_signs_for_dual(title)
 }
 
 /// `looksPtBr`: dublado PT-BR visível no TÍTULO, independente do indexer.
 /// `Dual` sozinho segue ambíguo: só conta com PT explícito ao lado ou sinal de
-/// português — `has_pt_signs` entra em CONJUNÇÃO, nunca no lugar da marca.
+/// português em CONJUNÇÃO. Idioma estrangeiro declarado desmente, e o sinal é
+/// o estreito (`has_pt_signs_for_dual`): o `ç` de "Le Garçon DUAL" não promove
+/// francês a BR dublado.
 pub fn looks_pt_br(title: &str) -> bool {
     looks_pt_br_with_audio(title, audio_from_title(title))
 }
@@ -309,5 +317,31 @@ mod tests {
             assert_eq!(sinais.audio, audio_from_title(titulo), "{titulo}");
             assert_eq!(sinais.looks_pt_br, looks_pt_br(titulo), "{titulo}");
         }
+    }
+
+    /// Dual francês não vira BR dublado pelo `ç`/preposição, e o lado BR
+    /// continua de pé (ç sem contexto francês, ã/õ, site com fronteira).
+    #[test]
+    fn dual_frances_nao_vira_br() {
+        for titulo in [
+            "Le Garçon 2020 DUAL 1080p",
+            "La Révolution Française 2020 Dual Audio 1080p",
+            "Leçons de vie 2019 DUAL VFF 1080p",
+            "Le.Garçon.2020.MULTi.TRUEFRENCH.1080p",
+            "Movie 2020 Dual Audio 1080p www.HDBTHD.com",
+        ] {
+            assert!(!looks_pt_br(titulo), "{titulo}: não é BR");
+        }
+        for titulo in [
+            "Trilogia - Se Beber, Não Case! (2009-2013) 5.1 BluRay Dual Áudio 1080p By.Luan.Harper",
+            "A Força do Destino 2020 1080p Dual Audio",
+            "Velozes e Furiosos 9 2021 Dual Áudio 1080p - WWW.BTHD.TV",
+            "Diario de uma Paixao de 2004 1080p DUAL",
+            "Matrix (1999) BDRip 1080p Dual Audio - WWW.WOLVERDONFILMES.COM",
+        ] {
+            assert!(looks_pt_br(titulo), "{titulo}: BR de verdade");
+        }
+        // A limpeza não muda: `has_pt_signs` (que absolve) segue generoso.
+        assert!(crate::br_origin::has_pt_signs("Le Garçon 2020 DUAL 1080p"));
     }
 }
