@@ -93,15 +93,27 @@ test('controles negativos: global comum, Dual ambíguo, estrangeiro e `_lied` mo
   assert.equal(sortAndLimit([dual], { minSeeders }).length, 0);
 
   // Estrangeiro explícito com sinal PT no título: TRUEFRENCH desmente o waiver.
+  // Desde o `looks_pt_br` endurecido, o idioma estrangeiro declarado desmente
+  // já a ORIGEM: o Dual francês nem nasce `_br` (antes nascia e só o piso o
+  // barrava). O mesmo título sem TRUEFRENCH segue `_br` e passa — o controle
+  // abaixo prova que é o idioma declarado, não o resto do nome, que decide.
   const frances = globalStream({
     title: 'Event.Horizon.1997.DUAL.1080p.TRUEFRENCH.Estreia',
     infoHash: 'd'.repeat(40),
     seeders: 0,
     indexer: 'thepiratebay',
   });
-  assert.equal(frances._br, true, 'o sinal PT marca origem, mas...');
-  assert.equal(frances._dubClaim, true);
+  assert.equal(frances._br, false, 'TRUEFRENCH desmente a origem BR');
+  assert.equal(frances._dubClaim, false);
   assert.equal(frances._dubbed, false);
+  const semFrances = globalStream({
+    title: 'Event.Horizon.1997.DUAL.1080p.Estreia',
+    infoHash: 'f'.repeat(40),
+    seeders: 0,
+    indexer: 'thepiratebay',
+  });
+  assert.equal(semFrances._br, true, 'sem idioma estrangeiro, o sinal PT marca origem');
+  assert.equal(sortAndLimit([semFrances], { minSeeders }).length, 1);
   assert.equal(
     sortAndLimit([frances], { minSeeders }).length, 0,
     'áudio estrangeiro explícito não é comprovadamente BR dublada',

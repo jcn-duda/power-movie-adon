@@ -20,7 +20,7 @@ adom-store = { path = "../adom-store" }
 adom-sources = { path = "../adom-sources" }
 regex = "=1.13.1"
 fancy-regex = "=0.19.2"
-url = "=2.5.8"
+url = "=2.5.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 # ── mico_net (cliente HTTP do Mico Leão Dublado) ──────────────────────
