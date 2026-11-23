@@ -225,9 +225,11 @@ static YEAR: LazyLock<Regex> =
 /// com "the" e nenhum The Boys; "boys" → The Boys no topo).
 const ARTICLES: &[&str] = &["the", "a", "an", "o", "os", "as", "um", "uma"];
 
-/// Queries que o site recebe, em ordem: só o nome (sem SxxEyy/ano/`:`), e a
-/// mesma sem artigos quando sobra algo diferente. Ano só sai se sobrar nome:
-/// no filme "1917 2019" o primeiro ano É o título.
+/// Queries que o site recebe, em ordem: o nome sem artigos (quando sobra algo
+/// diferente) e o nome inteiro, ambos sem SxxEyy/ano/`:`. A enxuta vem
+/// primeiro porque é a que põe a obra no topo ("boys" → The Boys); a inteira
+/// cobre título que depende do artigo. Ano só sai se sobrar nome: no filme
+/// "1917 2019" o primeiro ano É o título.
 pub fn site_queries(query: &str) -> Vec<String> {
     let no_season = SEASON.replace_all(query, " ").replace(':', " ");
     let no_year = YEAR.replace_all(&no_season, " ");
@@ -239,7 +241,6 @@ pub fn site_queries(query: &str) -> Vec<String> {
     if bare.is_empty() {
         return out;
     }
-    out.push(bare.join(" "));
     let lean: Vec<&str> = bare
         .iter()
         .copied()
@@ -248,6 +249,7 @@ pub fn site_queries(query: &str) -> Vec<String> {
     if !lean.is_empty() && lean.len() != bare.len() {
         out.push(lean.join(" "));
     }
+    out.push(bare.join(" "));
     out
 }
 
@@ -299,29 +301,45 @@ impl Selection {
     }
 }
 
+/// Cards das páginas de busca, na ordem das queries e sem repetir URL.
+pub fn merge_cards(pages: Vec<Vec<HdrWork>>) -> Vec<HdrWork> {
+    let mut seen = std::collections::HashSet::new();
+    pages
+        .into_iter()
+        .flatten()
+        .filter(|w| seen.insert(w.url.clone()))
+        .collect()
+}
+
 /// Busca do site: posts já filtrados pela query, ou `None` quando a busca
 /// falhou ou não casou nada (aí quem responde é a listagem).
+///
+/// Todas as queries rodam e os cards se juntam ANTES do filtro: parar na
+/// primeira que casasse algo deixava "the boys" com "Susie e os Baker Boys /
+/// The Fabulous Baker Boys" (2/2 tokens) e a busca "boys", que traz a série,
+/// nunca rodava.
 async fn search_site(
     profile: &ResolverProfile,
     query: &str,
     sel: &Selection,
 ) -> Option<Vec<SitePost>> {
     let base = profile.selector.url();
+    let mut pages = Vec::new();
     for q in site_queries(query) {
-        let html = match profile.search_html(&q).await {
-            Ok(html) => html,
-            Err(e) => {
-                eprintln!("[resolver] hdrtorrents: busca do site falhou ({e}); usando a listagem");
-                return None;
-            }
-        };
-        let posts = sel.apply(parse_listing_html(&html, &base).unwrap_or_default());
-        if !posts.is_empty() {
-            profile.selector.note_success();
-            return Some(posts);
+        match profile.search_html(&q).await {
+            Ok(html) => pages.push(parse_listing_html(&html, &base).unwrap_or_default()),
+            Err(e) => eprintln!("[resolver] hdrtorrents: busca do site falhou ({e})"),
         }
     }
-    None
+    if pages.is_empty() {
+        return None;
+    }
+    profile.selector.note_success();
+    let posts = sel.apply(merge_cards(pages));
+    if posts.is_empty() {
+        return None;
+    }
+    Some(posts)
 }
 
 /// `searchPosts` do HDR: busca do site → (fallback) catálogo → match local →

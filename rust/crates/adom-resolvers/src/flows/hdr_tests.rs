@@ -1,13 +1,15 @@
 //! Busca do HDR pelo `index.php?busca=`: fixtures são HTML REAL salvo do site
 //! em 2026-11-23 (`index.php?busca=coringa` e `?busca=fallout`).
 
-use super::{site_queries, Selection};
+use super::{merge_cards, site_queries, Selection};
 use crate::profile::ResolverProfile;
 use crate::sites::hdrtorrents::parse_listing_html;
 
 const BASE: &str = "https://hdrtorrents.net";
 const CORINGA: &str = include_str!("../../tests/fixtures/hdrtorrents_busca_coringa.html");
 const FALLOUT: &str = include_str!("../../tests/fixtures/hdrtorrents_busca_fallout.html");
+const THE_BOYS: &str = include_str!("../../tests/fixtures/hdrtorrents_busca_the_boys.html");
+const BOYS: &str = include_str!("../../tests/fixtures/hdrtorrents_busca_boys.html");
 
 /// O que a busca do HDR entrega para uma query, pelo mesmo filtro do flow.
 fn selected(html: &str, query: &str) -> Vec<String> {
@@ -33,11 +35,11 @@ fn query_do_site_vai_so_com_o_nome() {
 }
 
 #[test]
-fn artigo_ganha_segunda_tentativa() {
-    assert_eq!(site_queries("The Boys S04"), vec!["The Boys", "Boys"]);
+fn artigo_ganha_query_enxuta_primeiro() {
+    assert_eq!(site_queries("The Boys S04"), vec!["Boys", "The Boys"]);
     assert_eq!(
         site_queries("O Agente Secreto 2025"),
-        vec!["O Agente Secreto", "Agente Secreto"]
+        vec!["Agente Secreto", "O Agente Secreto"]
     );
     // Só artigo: não sobra query enxuta, fica a original.
     assert_eq!(site_queries("The"), vec!["The"]);
@@ -67,6 +69,33 @@ fn busca_fallout_traz_as_temporadas() {
     );
     assert!(
         got.iter().any(|t| t.contains("Fallout - 2ª Temporada")),
+        "{got:?}"
+    );
+}
+
+/// "the boys" sozinho casa "Susie e os Baker Boys / The Fabulous Baker Boys"
+/// (2/2 tokens) e nenhum The Boys; só juntando a página de "boys" (que vem
+/// primeiro) a série entra no corte.
+#[test]
+fn the_boys_junta_as_duas_buscas() {
+    let page = |html| parse_listing_html(html, BASE).expect("cards");
+    let sel = Selection::of("hdrtorrents", "The Boys");
+    let only_full: Vec<String> = sel
+        .apply(page(THE_BOYS))
+        .into_iter()
+        .map(|p| p.title)
+        .collect();
+    assert!(
+        !only_full.iter().any(|t| t.starts_with("The Boys -")),
+        "{only_full:?}"
+    );
+    let got: Vec<String> = sel
+        .apply(merge_cards(vec![page(BOYS), page(THE_BOYS)]))
+        .into_iter()
+        .map(|p| p.title)
+        .collect();
+    assert!(
+        got.iter().any(|t| t.starts_with("The Boys - 5ª Temporada")),
         "{got:?}"
     );
 }
