@@ -62,14 +62,17 @@ export const magnetBank = () => {
   // e teto curto para lançamento recente. Os locais existem para o max nunca
   // ficar abaixo do min (knob invertido no `.env` vira clamp coerente, não janela
   // vazia) e o teto fresco nunca ultrapassar o max.
-  // Piso = teto (7d) por default: toda resposta instantânea dispara a coleta
+  // Piso 7d / teto 30d por default: toda resposta instantânea dispara a coleta
   // completa no tail, então o custo de confiar no acervo é no máximo UMA abertura
   // sem a novidade. Com piso de 1h, o banco recém-criado deixava quase tudo em
-  // `stale` e a abertura esperava ~5s de BR ao vivo (medido 2026-09-18). O
-  // lançamento recente segue no teto curto (`instantFreshMaxMs`).
+  // `stale` e a abertura esperava ~5s de BR ao vivo (medido 2026-09-18). Obra
+  // sem release nova há 60d fica no teto (30d); obra com release recente, no
+  // piso. O lançamento recente segue no teto curto (`instantFreshMaxMs`).
+  // Quem decide em produção é o gateway (`adom-server/src/stream_config.rs`),
+  // que lê os defaults do `adom-search`; estes números são o espelho no Node.
   const instantMinMs = Math.max(1000, num(process.env.MAGNET_BANK_INSTANT_MIN_MS, 7 * 86400000));
-  const instantMaxMs = Math.max(instantMinMs, num(process.env.MAGNET_BANK_INSTANT_MAX_MS, 7 * 86400000));
-  const instantFreshMaxMs = Math.min(instantMaxMs, Math.max(1000, num(process.env.MAGNET_BANK_INSTANT_FRESH_MAX_MS, 2 * 3600000)));
+  const instantMaxMs = Math.max(instantMinMs, num(process.env.MAGNET_BANK_INSTANT_MAX_MS, 30 * 86400000));
+  const instantFreshMaxMs = Math.min(instantMaxMs, Math.max(1000, num(process.env.MAGNET_BANK_INSTANT_FRESH_MAX_MS, 5 * 3600000)));
   return {
     enabled: String(process.env.MAGNET_BANK || 'true') !== 'false',
     dbPath: process.env.MAGNET_BANK_DB_PATH || DEFAULT_MAGNET_BANK_DB_PATH,
@@ -104,8 +107,9 @@ export const magnetBank = () => {
     // no tail. Kill-switch explícito; os tetos de itens são os mesmos do fallback
     // (acervo é acervo), então não há knob novo de cota.
     instantEnabled: String(process.env.MAGNET_BANK_INSTANT || 'true') !== 'false',
-    // Piso/teto da janela (default 7d/7d): obra coletada na última semana
-    // responde do acervo; baixar o piso volta a exigir estabilidade.
+    // Piso/teto da janela (default 7d/30d): obra coletada na última semana
+    // responde do acervo; obra sem release nova há 60d, há até 30 dias.
+    // Baixar o piso volta a exigir estabilidade.
     instantMinMs,
     instantMaxMs,
     // Lançamento recente (data < 30d/14d ou ano de catálogo corrente): teto curto.

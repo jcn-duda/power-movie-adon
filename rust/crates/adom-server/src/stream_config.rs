@@ -11,10 +11,13 @@ pub fn orchestrator_config_from_env() -> OrchestratorConfig {
     let build = operator_search_build_from_env();
     let mut defaults = build.to_schema_defaults();
     merge_json_object(&mut defaults, &operator_debrid_defaults_from_env());
+    // Base = os defaults do operador que moram no `adom-search` (uma fonte só:
+    // os `unwrap_or` da janela instantânea abaixo leem daqui).
+    let base = OrchestratorConfig::default();
     let mut cfg = OrchestratorConfig {
         defaults,
         build,
-        ..Default::default()
+        ..base.clone()
     };
     if let Ok(secret) = std::env::var("RESOLVE_SECRET") {
         cfg.resolve_secret = secret;
@@ -122,16 +125,16 @@ pub fn orchestrator_config_from_env() -> OrchestratorConfig {
     }
     let instant_min = env_i64("MAGNET_BANK_INSTANT_MIN_MS")
         .map(|n| n.max(1_000))
-        .unwrap_or(7 * 86_400_000);
+        .unwrap_or(base.magnet_bank_instant_min_ms);
     let instant_max = env_i64("MAGNET_BANK_INSTANT_MAX_MS")
         .map(|n| n.max(1_000))
-        .unwrap_or(7 * 86_400_000)
+        .unwrap_or(base.magnet_bank_instant_max_ms)
         .max(instant_min);
     cfg.magnet_bank_instant_min_ms = instant_min;
     cfg.magnet_bank_instant_max_ms = instant_max;
     cfg.magnet_bank_instant_fresh_max_ms = env_i64("MAGNET_BANK_INSTANT_FRESH_MAX_MS")
         .map(|n| n.max(1_000))
-        .unwrap_or(2 * 3_600_000)
+        .unwrap_or(base.magnet_bank_instant_fresh_max_ms)
         .min(instant_max);
     // O `poolCovered` do Node usa o piso do AUTOFETCH — o MESMO número já lido
     // para o fast-path da conta.
@@ -378,5 +381,15 @@ mod tests {
         // VAZIA, nunca o default (mesma régua da sonda do colhedor).
         assert!(indexer_list(Some("   "), "a,b").is_empty());
         assert!(indexer_list(Some(" , , "), "a,b").is_empty());
+    }
+
+    /// Sem env, a janela instantânea do gateway é a do `adom-search`: é ela
+    /// que decide em produção, não os números do `config/cache.ts` do Node.
+    #[test]
+    fn janela_instantanea_sem_env_vem_do_adom_search() {
+        let cfg = super::orchestrator_config_from_env();
+        assert_eq!(cfg.magnet_bank_instant_min_ms, 7 * 86_400_000);
+        assert_eq!(cfg.magnet_bank_instant_max_ms, 30 * 86_400_000);
+        assert_eq!(cfg.magnet_bank_instant_fresh_max_ms, 5 * 3_600_000);
     }
 }

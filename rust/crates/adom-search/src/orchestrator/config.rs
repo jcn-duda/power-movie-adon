@@ -112,7 +112,11 @@ pub struct OrchestratorConfig {
     /// `MAGNET_BANK_FALLBACK_MAX`/`_GLOBAL_MAX` (clamp 1..40 / 1..500).
     pub magnet_bank_fallback_max_per_indexer: i64,
     pub magnet_bank_fallback_global_max: i64,
-    /// Janela adaptativa da instantânea (`MAGNET_BANK_INSTANT_*`).
+    /// Janela adaptativa da instantânea (`MAGNET_BANK_INSTANT_*`):
+    /// `clamp(estabilidade ÷ 2, min, max)`, com teto curto para lançamento.
+    /// Piso 7d para obra com release recente, teto 30d para obra estável e 5h
+    /// para lançamento. A coleta ao vivo inteira segue no tail, então o custo
+    /// de confiar no acervo é no máximo UMA abertura sem a novidade.
     pub magnet_bank_instant_min_ms: i64,
     pub magnet_bank_instant_max_ms: i64,
     pub magnet_bank_instant_fresh_max_ms: i64,
@@ -165,8 +169,8 @@ impl Default for OrchestratorConfig {
             magnet_bank_fallback_max_per_indexer: 40,
             magnet_bank_fallback_global_max: 40,
             magnet_bank_instant_min_ms: 7 * 86_400_000,
-            magnet_bank_instant_max_ms: 7 * 86_400_000,
-            magnet_bank_instant_fresh_max_ms: 2 * 3_600_000,
+            magnet_bank_instant_max_ms: 30 * 86_400_000,
+            magnet_bank_instant_fresh_max_ms: 5 * 3_600_000,
             auto_fetch_min_seeders: 3.0,
         }
     }
@@ -351,5 +355,43 @@ mod tests {
             check.check(&RankingStream::default()),
             DebridAnswer::Unknown
         );
+    }
+
+    /// A janela da via instantânea cresce com a estabilidade da obra: estável
+    /// fica no teto, com release recente no piso, lançamento no teto curto.
+    #[test]
+    fn janela_instantanea_cresce_com_a_estabilidade() {
+        use adom_core::{instant_window, InstantMeta, WorkRow};
+        let cfg = OrchestratorConfig::default();
+        let dia = 86_400_000;
+        let hora = 3_600_000;
+        let agora = 1_800_000_000_000;
+        let janela = |coletada_ha: i64, estabilidade: i64, year: &str| {
+            let works = [Some(WorkRow {
+                passed_filter: 1,
+                last_seen: agora - coletada_ha,
+                first_seen: agora - coletada_ha - estabilidade,
+            })];
+            instant_window(
+                &works,
+                &InstantMeta {
+                    year,
+                    released: "",
+                    first_aired: "",
+                },
+                agora,
+                cfg.magnet_bank_instant_min_ms,
+                cfg.magnet_bank_instant_max_ms,
+                cfg.magnet_bank_instant_fresh_max_ms,
+            )
+        };
+        // Obra estável (sem release nova há 60 d): coleta de 20 d atrás ainda vale.
+        let estavel = janela(20 * dia, 60 * dia, "2001");
+        assert_eq!(estavel.window_ms, 30 * dia);
+        // Obra com release nova há 1 d: fica no piso de 7 d.
+        assert_eq!(janela(0, dia, "2001").window_ms, 7 * dia);
+        assert_eq!(janela(0, 20 * dia, "2001").window_ms, 10 * dia);
+        // Lançamento (ano corrente): teto curto de 5 h vence a estabilidade.
+        assert_eq!(janela(0, 60 * dia, "2027").window_ms, 5 * hora);
     }
 }
