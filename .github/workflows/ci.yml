@@ -6,12 +6,27 @@ name: CI
 on:
   push:
     branches: ['**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   workflow_dispatch:
+
+# Push novo na mesma branch cancela a execução anterior: só o último commit
+# importa, e o resto era minuto do Actions queimado à toa.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       # Não interrompe a outra versão quando uma falha: o interessante costuma
       # ser justamente a diferença entre elas.
@@ -20,7 +35,9 @@ jobs:
         # 20 é o piso declarado em engines; 22 é o que a imagem de produção usa.
         # Em 20 o node:sqlite não existe e o cache cai só em memória — o teste de
         # persistência tem skip explícito pra isso, então as duas versões passam.
-        node: ['20.x', '22.x']
+        # Em push de branch de trabalho roda só a 22 (a de produção); a matriz
+        # completa fica para a main, PRs e o botão Run workflow.
+        node: ${{ (github.event_name != 'push' || github.ref == 'refs/heads/main') && fromJSON('["20.x", "22.x"]') || fromJSON('["22.x"]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +95,7 @@ jobs:
   # Falha de auditoria reprova o job; não mascarar com continue-on-error.
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
