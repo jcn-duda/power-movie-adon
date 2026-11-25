@@ -335,14 +335,31 @@ async fn instantanea_do_banco_leva_selo_e_fallback_fetchable() {
     );
 }
 
+/// Banco primeiro: coleta de 60 dias atrás (fora do teto de 30) ainda abre do
+/// acervo; o tail traz o ao vivo. Só o `_ALWAYS` desligado volta a barrar.
 #[tokio::test]
-async fn instantanea_com_foto_velha_nao_responde() {
+async fn instantanea_com_foto_velha_responde_do_banco() {
+    let scan = foto_velha_scan(config()).await;
+    assert!(scan.instant_eligible, "acervo velho ainda responde");
+    assert!(!scan.instant_items.is_empty());
+}
+
+#[tokio::test]
+async fn instantanea_com_foto_velha_e_janela_ligada_nao_responde() {
+    let mut cfg = config();
+    cfg.magnet_bank_instant_always = false;
+    assert!(!foto_velha_scan(cfg).await.instant_eligible);
+}
+
+async fn foto_velha_scan(
+    cfg: OrchestratorConfig,
+) -> crate::orchestrator::native_index::NativeIndexOutcome {
     let mut work = instant_work(
         "cccccccccccccccccccccccccccccccccccccccc",
         "Filme 2024 1080p Dublado",
         1,
     );
-    work.last_seen = now_ms() - 30 * 86_400_000;
+    work.last_seen = now_ms() - 60 * 86_400_000;
     if let Some(magnet) = work.magnet.as_mut() {
         magnet.last_seen = work.last_seen;
     }
@@ -350,16 +367,10 @@ async fn instantanea_com_foto_velha_nao_responde() {
         vec![work],
         sources("cccccccccccccccccccccccccccccccccccccccc"),
     );
-    let orch = orch(
-        config(),
-        Some(FakeIndex::new(Vec::new(), false)),
-        Some(bank),
-    );
-    let scan = orch
-        .native_index_scan(
-            &input("movie", json!({"providers": ["jackett"]})),
-            &meta(None, None),
-        )
-        .await;
-    assert!(!scan.instant_eligible);
+    let orch = orch(cfg, Some(FakeIndex::new(Vec::new(), false)), Some(bank));
+    orch.native_index_scan(
+        &input("movie", json!({"providers": ["jackett"]})),
+        &meta(None, None),
+    )
+    .await
 }

@@ -83,9 +83,16 @@ impl Orchestrator {
             m.inc(metrics::INSTANT_SKIP_NO_LIVE, 1);
             return;
         }
+        // Banco primeiro: coleta velha não barra a abertura instantânea — o
+        // tail roda a coleta ao vivo inteira e promove a novidade. Barrar aqui
+        // mandava 10 de 19 aberturas da VPS (2026-11-24) esperar os indexers
+        // com o acervo já em mãos.
         if now - window.last_collection > window.window_ms {
-            m.inc(metrics::INSTANT_SKIP_STALE, 1);
-            return;
+            if !self.config.magnet_bank_instant_always {
+                m.inc(metrics::INSTANT_SKIP_STALE, 1);
+                return;
+            }
+            m.inc(metrics::INSTANT_STALE_SERVED, 1);
         }
         let hashes: Vec<String> = rows.iter().map(|row| row.hash.clone()).collect();
         let mut sources = bank.sources_for_many(&hashes);

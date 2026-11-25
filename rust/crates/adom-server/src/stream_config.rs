@@ -114,6 +114,9 @@ pub fn orchestrator_config_from_env() -> OrchestratorConfig {
     cfg.magnet_bank_instant_enabled = std::env::var("MAGNET_BANK_INSTANT")
         .map(|raw| raw.trim() != "false")
         .unwrap_or(true);
+    cfg.magnet_bank_instant_always = std::env::var("MAGNET_BANK_INSTANT_ALWAYS")
+        .map(|raw| raw.trim() != "false")
+        .unwrap_or(true);
     cfg.magnet_bank_fallback_enabled = std::env::var("MAGNET_BANK_FALLBACK")
         .map(|raw| raw.trim() != "false")
         .unwrap_or(true);

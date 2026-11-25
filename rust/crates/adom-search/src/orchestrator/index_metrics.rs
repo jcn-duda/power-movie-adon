@@ -21,6 +21,8 @@ pub const INSTANT: &str = "index.rust.instant";
 pub const INSTANT_SKIP_DISABLED: &str = "index.rust.instant.skip.disabled";
 pub const INSTANT_SKIP_NO_LIVE: &str = "index.rust.instant.skip.no_live_collection";
 pub const INSTANT_SKIP_STALE: &str = "index.rust.instant.skip.stale";
+/// Coleta fora da janela servida do acervo mesmo assim (`_ALWAYS`).
+pub const INSTANT_STALE_SERVED: &str = "index.rust.instant.stale_served";
 pub const INSTANT_SKIP_NOT_COVERED: &str = "index.rust.instant.skip.not_covered";
 pub const INSTANT_SKIP_NO_DUBBED: &str = "index.rust.instant.no_dubbed";
 pub const INSTANT_SKIP_IDX_HASH: &str = "index.rust.instant.skip.idx_hash";
@@ -51,6 +53,7 @@ const KEYS: &[&str] = &[
     INSTANT_SKIP_DISABLED,
     INSTANT_SKIP_NO_LIVE,
     INSTANT_SKIP_STALE,
+    INSTANT_STALE_SERVED,
     INSTANT_SKIP_NOT_COVERED,
     INSTANT_SKIP_NO_DUBBED,
     INSTANT_SKIP_IDX_HASH,

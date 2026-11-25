@@ -112,11 +112,11 @@ pub struct OrchestratorConfig {
     /// `MAGNET_BANK_FALLBACK_MAX`/`_GLOBAL_MAX` (clamp 1..40 / 1..500).
     pub magnet_bank_fallback_max_per_indexer: i64,
     pub magnet_bank_fallback_global_max: i64,
-    /// Janela adaptativa da instantânea (`MAGNET_BANK_INSTANT_*`):
-    /// `clamp(estabilidade ÷ 2, min, max)`, com teto curto para lançamento.
-    /// Piso 7d para obra com release recente, teto 30d para obra estável e 5h
-    /// para lançamento. A coleta ao vivo inteira segue no tail, então o custo
-    /// de confiar no acervo é no máximo UMA abertura sem a novidade.
+    /// `MAGNET_BANK_INSTANT_ALWAYS` (default on): coleta fora da janela abaixo
+    /// NÃO barra o acervo — a abertura sai do banco e o tail traz o ao vivo.
+    pub magnet_bank_instant_always: bool,
+    /// Janela (`MAGNET_BANK_INSTANT_*`): `clamp(estabilidade ÷ 2, min, max)`,
+    /// teto curto para lançamento. Só decide com o `_ALWAYS` desligado.
     pub magnet_bank_instant_min_ms: i64,
     pub magnet_bank_instant_max_ms: i64,
     pub magnet_bank_instant_fresh_max_ms: i64,
@@ -168,6 +168,7 @@ impl Default for OrchestratorConfig {
             magnet_bank_fallback_enabled: true,
             magnet_bank_fallback_max_per_indexer: 40,
             magnet_bank_fallback_global_max: 40,
+            magnet_bank_instant_always: true,
             magnet_bank_instant_min_ms: 7 * 86_400_000,
             magnet_bank_instant_max_ms: 30 * 86_400_000,
             magnet_bank_instant_fresh_max_ms: 5 * 3_600_000,
