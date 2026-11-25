@@ -111,6 +111,7 @@ fn render(case: &Case, input: &Value) -> JsText {
             .get("fromFallback")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        in_bank: false,
         style: opts.get("style").and_then(Value::as_str),
         // Presente-mas-null conta como falso (`showSource !== undefined`).
         show_source: opts.get("showSource").map(truthy),

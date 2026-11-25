@@ -198,6 +198,7 @@ fn render(case: &GoldenCase) -> JsText {
         magnet_dn: magnet.as_ref(),
         from_fallback: from_fallback.as_ref(),
         from_snapshot: from_snapshot.as_ref(),
+        in_bank: None,
     };
     let relabel_options = RelabelOptions {
         is_br,

@@ -180,6 +180,7 @@ fn relabel_merged(merged: &RankingStream, loser: &RankingStream) -> String {
         magnet_dn: Some(&magnet_dn),
         from_fallback: merged.extra.get("_fromFallback"),
         from_snapshot: merged.extra.get("_fromSnapshot"),
+        in_bank: merged.extra.get("_inBank"),
     };
     let options = RelabelOptions {
         is_br: bool_of(merged.br),

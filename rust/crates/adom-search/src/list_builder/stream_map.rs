@@ -55,6 +55,7 @@ pub fn map_stream(
             seeders: Some(&types::seeders_value_of(item.seeders)),
             // `stored` do TS: foto do índice exibe o MESMO selo da reserva.
             from_fallback: item.from_fallback || item.from_snapshot,
+            in_bank: item.in_bank,
             style: None,
             show_source: None,
         },
@@ -114,6 +115,11 @@ pub fn map_stream(
         stream
             .extra
             .insert("sources".into(), item.sources.clone().into());
+    }
+    // Só exibição: o dedupe remonta o nome no `relabel` e precisa ver o 📦.
+    // Não entra no `hasFallback` — o item é vivo, a lista não vira reserva.
+    if item.in_bank {
+        stream.extra.insert("_inBank".into(), true.into());
     }
     // Marca de reserva do bank/foto do índice: o `finish` lê daqui para o
     // `hasFallback` (entrada com reserva nunca é completa). Não é campo `_*`

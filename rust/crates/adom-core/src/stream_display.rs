@@ -94,6 +94,9 @@ pub struct StreamDisplayOptions<'a> {
     pub is_br: bool,
     pub seeders: Option<&'a Value>,
     pub from_fallback: bool,
+    /// O hash está no banco e o vivo o confirmou: 📦 fica, mas os seeders são
+    /// medidos (sem `~`). Só `from_fallback` marca o número como salvo.
+    pub in_bank: bool,
     pub style: Option<&'a str>,
     pub show_source: Option<bool>,
 }
@@ -266,7 +269,7 @@ pub fn stream_display_name(
     let stats = join_nonempty(&[details.clone(), tracker_chip, seeders_chip(opts)], " · ");
 
     // Fallback (Etapa 4): o 📦 precede até uma stat vazia, como no TS.
-    let body = if opts.from_fallback {
+    let body = if opts.from_fallback || opts.in_bank {
         let mut out = JsText::from_str("📦 · ");
         out.push(&stats);
         out

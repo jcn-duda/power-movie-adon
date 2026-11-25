@@ -49,6 +49,8 @@ pub struct RelabelStream<'a> {
     pub magnet_dn: Option<&'a JsText>,
     pub from_fallback: Option<&'a Value>,
     pub from_snapshot: Option<&'a Value>,
+    /// `_inBank`: hash do banco confirmado ao vivo (📦 sem `~`).
+    pub in_bank: Option<&'a Value>,
 }
 
 /// O segundo argumento do TS: `{ isBr, dubbedFrom }`.
@@ -130,6 +132,7 @@ pub fn relabel(
         is_br: options.is_br,
         seeders: Some(&seeders),
         from_fallback,
+        in_bank: truthy_opt(stream.in_bank),
         style: None,
         show_source: None,
     };

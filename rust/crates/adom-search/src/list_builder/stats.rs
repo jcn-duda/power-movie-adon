@@ -47,7 +47,8 @@ pub fn stats_line(item: &RawItem) -> String {
     // Dado salvo (reserva do banco ou foto do índice): 📦 e seeders `~N` — é
     // foto do acervo, não medição viva (o `stored` do `toStremioStream`).
     let stored = item.from_fallback || item.from_snapshot;
-    if stored {
+    // Hash do banco que o vivo confirmou: 📦 fica, seeders medidos (sem `~`).
+    if stored || item.in_bank {
         parts.push("📦".into());
     }
     let n = item.seeders.unwrap_or(0.0);

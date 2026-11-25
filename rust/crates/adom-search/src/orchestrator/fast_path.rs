@@ -72,6 +72,7 @@ pub(super) fn merge_fast_with_live(
         .map(RawItem::bank_hash)
         .filter(|h| !h.is_empty())
         .collect();
+    let bank_hashes = bank_hashes_of(&fast);
     let mut out: Vec<RawItem> = Vec::with_capacity(fast.len() + live.len());
     let agregado_falhou = live_state.is_some_and(|state| state.all.failed());
     if all_failed || agregado_falhou {
@@ -111,7 +112,32 @@ pub(super) fn merge_fast_with_live(
         }
     }
     out.extend(live);
+    keep_bank_seal(&mut out, &bank_hashes);
     out
+}
+
+/// Hashes que a via rápida serviu do banco (reserva ou foto do índice).
+fn bank_hashes_of(fast: &[RawItem]) -> BTreeSet<String> {
+    fast.iter()
+        .filter(|item| item.from_fallback || item.from_snapshot)
+        .map(RawItem::bank_hash)
+        .filter(|h| !h.is_empty())
+        .collect()
+}
+
+/// Banco primeiro: o vivo COMPLEMENTA a lista, não apaga o 📦 de quem já
+/// estava no banco. A promoção tira as marcas de reserva (TTL, `hasFallback`,
+/// gravação no índice seguem como antes) e põe só a marca de EXIBIÇÃO, para
+/// a reabertura não trocar o selo que o usuário acabou de ver.
+fn keep_bank_seal(items: &mut [RawItem], bank_hashes: &BTreeSet<String>) {
+    if bank_hashes.is_empty() {
+        return;
+    }
+    for item in items.iter_mut() {
+        if !item.from_fallback && !item.from_snapshot && bank_hashes.contains(&item.bank_hash()) {
+            item.in_bank = true;
+        }
+    }
 }
 
 /// Primeira resposta (índice + parte viva já colhida): a foto cujo hash o vivo
@@ -126,6 +152,7 @@ pub(super) fn unmark_live_snapshots(fast: &mut [RawItem], live: &[RawItem]) {
     for item in fast.iter_mut().filter(|item| item.from_snapshot) {
         if live_hashes.contains(&item.bank_hash()) {
             item.from_snapshot = false;
+            item.in_bank = true;
         }
     }
 }

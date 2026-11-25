@@ -41,6 +41,9 @@ pub struct RawItem {
     /// Foto do índice (`fromSnapshot`): exibe 📦 até a promoção tardia, mas NÃO
     /// é reserva bloqueada (no TS, `_fromSnapshot` não entra no `fallbackBlocked`).
     pub from_snapshot: bool,
+    /// Só exibição: o hash veio do banco e o vivo o confirmou. Mantém o 📦 na
+    /// promoção tardia sem ser reserva (não pesa no `hasFallback`/TTL).
+    pub in_bank: bool,
     /// Mentira comprovada de áudio (`DubLieError`).
     pub lied: bool,
     /// O banco de magnets da CONTA já provou o hash quebrado (bad/lie/dead/miss):
@@ -224,6 +227,7 @@ pub fn raw_item_from_value(v: &Value) -> RawItem {
         from_account: bool_of("fromAccount") || bool_of("from_account"),
         from_fallback: bool_of("fromFallback") || bool_of("from_fallback"),
         from_snapshot: bool_of("fromSnapshot") || bool_of("from_snapshot"),
+        in_bank: bool_of("inBank"),
         lied: bool_of("lied"),
         broken: bool_of("broken"),
         proven_audio: v
@@ -308,6 +312,9 @@ impl RawItem {
         }
         if self.from_snapshot {
             put("fromSnapshot", Value::Bool(true));
+        }
+        if self.in_bank {
+            put("inBank", Value::Bool(true));
         }
         if self.lied {
             put("lied", Value::Bool(true));

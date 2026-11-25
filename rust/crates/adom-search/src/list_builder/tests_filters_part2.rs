@@ -22,6 +22,13 @@ fn foto_do_indice_e_reserva_exibem_selo_de_dado_salvo() {
     assert_eq!(stats_line(&vivo), "👤 12");
     assert_eq!(stats_line(&foto), "📦 👤 ~12");
     assert_eq!(stats_line(&reserva), "📦 👤 ~");
+    // Hash do banco confirmado ao vivo: 📦 fica, seeders medidos.
+    let confirmado = RawItem {
+        seeders: Some(184.0),
+        in_bank: true,
+        ..RawItem::default()
+    };
+    assert_eq!(stats_line(&confirmado), "📦 👤 184");
 }
 
 /// Rótulo do tracker e fonte pelo `dn=`, como o `toStremioStream`.

@@ -277,3 +277,34 @@ async fn complemento_entra_tambem_no_lote_tardio() {
     assert_eq!(out[0].info_hash.as_deref(), Some(HASH_B));
     assert!(supplement_completion(supplement, Vec::new(), None).is_none());
 }
+
+/// Banco primeiro: a promoção tardia complementa a lista sem apagar o 📦 de
+/// quem veio do banco. Sai a marca de RESERVA (o vivo venceu), entra a de
+/// exibição `in_bank`; o item só do vivo segue sem selo.
+#[test]
+fn promocao_mantem_o_selo_do_banco_no_hash_confirmado() {
+    let mut banco = item("banco", HASH_A, "kickass");
+    banco.from_fallback = true;
+    let mut foto = item("foto", HASH_B, "bludv");
+    foto.from_snapshot = true;
+    let live = vec![
+        item("banco ao vivo", HASH_A_UPPER, "kickass"),
+        item("novo", "dddddddddddddddddddddddddddddddddddddddd", "yts"),
+    ];
+    let out = merge_fast_with_live(vec![banco, foto], live, false, None);
+    assert_eq!(titles(&out), ["foto", "banco ao vivo", "novo"]);
+    assert!(out.iter().all(|i| !i.from_fallback && !i.from_snapshot));
+    assert!(
+        out[0].in_bank && out[1].in_bank,
+        "hash do banco mantém o 📦"
+    );
+    assert!(!out[2].in_bank, "o que só o vivo trouxe fica sem selo");
+
+    let mut primeira = vec![{
+        let mut f = item("foto", HASH_B, "bludv");
+        f.from_snapshot = true;
+        f
+    }];
+    unmark_live_snapshots(&mut primeira, &[item("vivo", HASH_B, "bludv")]);
+    assert!(!primeira[0].from_snapshot && primeira[0].in_bank);
+}
