@@ -26,6 +26,7 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 use crate::audio_lang::generic_dub_proves_pt;
+use crate::br_origin::has_pt_signs_for_dual;
 use crate::matching_vocabulary::JS_SPACE;
 
 /// `\b` do JS sem flag `u`: fronteira ASCII, não a fronteira Unicode do crate.
@@ -124,13 +125,48 @@ fn foreign_re() -> &'static Regex {
     })
 }
 
+/// `\bDUBBED\b`: a palavra inglesa por extenso, distinta do `DUB` curto.
+fn dubbed_word_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(&bounded("DUBBED")).expect("DUBBED compila"))
+}
+
+/// O português NOMEADO em inglês ("[Portuguese Dubbed]", "Brazilian Dubbed"):
+/// é o idioma da dublagem dito por extenso, o sinal que o `DUBBED` exige.
+fn pt_language_named_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(&bounded("PORTUGUESE|PORTUGU[EÊ]S|BRAZILIAN|BRASILEIR[OA]"))
+            .expect("português nomeado compila")
+    })
+}
+
+/// `DUBBED` por extenso que NÃO prova PT (sem sinal de português): a dublagem
+/// em inglês de cena. Serve para desmentir `is_br` gravado antes da regra.
+pub(crate) fn english_scene_dubbed(title: &str) -> bool {
+    let t = title.to_uppercase().replace('_', " ");
+    dubbed_word_re().is_match(&t) && !explicit_pt_audio(title)
+}
+
 /// `explicitPtAudio`: prova POSITIVA de áudio PT no título da release.
 pub fn explicit_pt_audio(title: &str) -> bool {
     // `_` separa de fato: sem a troca o `\b` ASCII não vê fronteira e o
     // marcador colado ao underscore não casava.
     let t = title.to_uppercase().replace('_', " ");
     let is_explicit_sub = sub_mark_re().is_match(&t) || leg_re().is_match(&t);
-    let is_generic_dub = generic_dub_proves_pt(&t);
+    // `DUBBED` por extenso é a tag de CENA da dublagem em inglês de obra
+    // estrangeira (anime, filme japonês). Medido no banco de produção em
+    // 2026-11-25: 299 releases BR só por esse elo, nenhuma PT
+    // (eztv/TPB/kickass/therarbg — Godzilla Minus One "DUBBED.1080p.AMZN.
+    // WEBRip-GalaxyRG265" no topo da lista com chip BR). Sozinho ele não prova
+    // PT; com sinal de português no título (o mesmo do `Dual`) continua
+    // provando. O `Dub` curto fica como estava: "Coyote.Vs.Acme.2026.1080p.
+    // WEBRip.Dub" era espelho do post BR DUBLADO (mesmo hash). O predicado
+    // genérico em si fica intacto: a limpeza o usa para ABSOLVER.
+    let is_generic_dub = generic_dub_proves_pt(&t)
+        && (!dubbed_word_re().is_match(&t)
+            || has_pt_signs_for_dual(&t)
+            || pt_language_named_re().is_match(&t));
 
     dublado_hit(&t)
         || dubagem_re().is_match(&t)
@@ -192,7 +228,11 @@ fn bare_pt_br_is_subtitle_list(t: &str) -> bool {
 /// PT explícito absolve antes: um único marcador PT em qualquer lugar vence a
 /// lista — falso positivo aqui destrói acervo BR da conta.
 pub fn has_explicit_foreign_audio(title: &str) -> bool {
-    if explicit_pt_audio(title) {
+    // O `DUBBED` genérico sem sinal PT não promove mais (ver
+    // `explicit_pt_audio`), mas aqui segue absolvendo: este é o caminho que
+    // apaga, e a dúvida nunca autoriza remoção.
+    let t = title.to_uppercase().replace('_', " ");
+    if explicit_pt_audio(title) || generic_dub_proves_pt(&t) {
         return false;
     }
     foreign_re().is_match(&title.to_uppercase())
@@ -227,6 +267,52 @@ mod lista_de_idiomas_tests {
             "Harry.Potter.2004.4K.UHD.2160p.REMUX.DV.DTS-HD.MA.7.1.Dual.PTBR-BrRemux",
             "Parent.Trap.2.1986.PTBR.1080P",
             "Filme 2020 1080p DUAL En/PTBR",
+        ] {
+            assert!(explicit_pt_audio(t), "{t}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod dubbed_ingles_tests {
+    use super::explicit_pt_audio;
+    use crate::looks_pt_br;
+
+    // Títulos reais do banco de produção (2026-11-25): `DUBBED` de tracker
+    // global é dublagem em inglês. Godzilla Minus One subia ao topo com chip BR.
+    #[test]
+    fn dubbed_ingles_nao_prova_pt() {
+        for t in [
+            "Godzilla.Minus.One.2023.DUBBED.1080p.AMZN.WEBRip.DDP5.1.x265.10bit-GalaxyRG265",
+            "Godzilla.Minus.One.2023.DUBBED.1080p.AMZN.WEB-DL.DDP5.1.Atmos.H.264-FLUX[TGx]",
+            "Attack On Titan S04E10 DUBBED 1080p HEVC x265-MeGusta",
+            "Noise 2022 DUBBED 1080p WEBRip x264 AAC AOC",
+            "The Raid 2 2014 DUBBED 1080p BluRay H264 AAC RARBG ORARBG",
+            "One-Punch.Man.S03E09.DUBBED.1080p.WEB.H264-SKYANiME",
+        ] {
+            assert!(!explicit_pt_audio(t), "{t}");
+            assert!(!looks_pt_br(t), "{t}");
+        }
+    }
+
+    // Com sinal de português no título, o DUBBED segue provando.
+    #[test]
+    fn dubbed_com_titulo_portugues_prova() {
+        for t in [
+            "A Paixão de Cristo 2004 DUBBED 1080p",
+            "Filme 2024 [Portuguese Dubbed]",
+            "Movie 2020 Brazilian Dubbed 1080p",
+            "Coração Valente 1995 DUBBED 1080p BluRay",
+        ] {
+            assert!(explicit_pt_audio(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn marca_pt_explicita_nao_muda() {
+        for t in [
+            "Godzilla Minus One [1080p BluRay DUBLADO 2.86 GB]",
+            "Godzilla.Minus.One.2023.DUBBED.PT-BR.1080p",
         ] {
             assert!(explicit_pt_audio(t), "{t}");
         }

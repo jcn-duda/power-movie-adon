@@ -329,10 +329,16 @@ test('DUB/ENGLISH: English Dubbed e Eng Dub não são dublado pt-BR (caso medido
 test('DUB/ENGLISH: PT explícito ao lado vence e o DUB genérico sem idioma segue valendo', () => {
   assert.equal(audioFromTitle('Spirited Away 2001 English Dub DUBLADO 1080p'), 'Dublado', 'DUBLADO explícito vence o English');
   assert.equal(foreignVerdict('Spirited.Away.2001.English.Dub.1080p.PT-BR'), 'absolve', 'com PT explícito, absolve');
-  // Antagonista travado (format-audio-quality): DUBBED nu, sem idioma citado,
-  // segue provando PT — a guarda só desmente quando o idioma aparece.
+  // Antagonista travado (format-audio-quality): DUB curto, sem idioma citado,
+  // segue provando PT — "Coyote.Vs.Acme.2026.1080p.WEBRip.Dub" era espelho do
+  // post BR DUBLADO. Já `DUBBED` por extenso é a tag de cena da dublagem EN
+  // (299 releases medidas em produção, nenhuma PT): só prova com sinal PT.
   assert.equal(audioFromTitle('Coringa 2019 DUB 1080p'), 'Dublado');
-  assert.equal(audioFromTitle('Filme.2024.1080p.WEB-DL.DUBBED.mkv'), 'Dublado');
+  assert.equal(audioFromTitle('Filme.2024.1080p.WEB-DL.DUBBED.mkv'), '');
+  assert.equal(
+    looksPtBr('Godzilla.Minus.One.2023.DUBBED.1080p.AMZN.WEBRip.DDP5.1.x265.10bit-GalaxyRG265'),
+    false,
+  );
 });
 
 test('DUB/ENGLISH: grupo de cena EN + dublagem declarada dá unknown, nunca condena', () => {

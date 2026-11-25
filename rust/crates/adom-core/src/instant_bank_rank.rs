@@ -4,6 +4,7 @@
 use crate::audio_lang::names_foreign_dub_language;
 use crate::audio_presentation::{audio_from_title, looks_pt_br};
 use crate::br_origin::has_pt_signs;
+use crate::pt_audio_guards::english_scene_dubbed;
 
 use super::InstantMagnet;
 
@@ -36,10 +37,11 @@ pub(super) fn instant_is_br(magnet: &InstantMagnet) -> bool {
         return false;
     }
     let title = magnet.title.as_str();
-    !(names_foreign_dub_language(title)
-        && !has_pt_signs(title)
-        && !looks_pt_br(title)
-        && !pt_label(title))
+    let sem_sinal_pt = !has_pt_signs(title) && !looks_pt_br(title) && !pt_label(title);
+    // `DUBBED` de cena gravou `is_br=1` antes de deixar de provar PT (299
+    // releases no banco de produção, Godzilla Minus One no topo): sem sinal
+    // PT, o rótulo velho cai como o do idioma estrangeiro nomeado.
+    !((names_foreign_dub_language(title) || english_scene_dubbed(title)) && sem_sinal_pt)
 }
 
 /// `dubRank`: quem prefere dublado recebe o dublado do acervo antes do teto.

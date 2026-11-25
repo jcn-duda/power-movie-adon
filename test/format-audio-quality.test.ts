@@ -58,7 +58,10 @@ test('audioFromTitle detecta dublado/dual/legendado e entra na linha', () => {
   assert.equal(audioFromTitle('Coringa Dublado 1080p'), 'Dublado');
   assert.equal(audioFromTitle('Coringa DUB PT-BR 1080p'), 'Dublado');
   assert.equal(audioFromTitle('Filme (2024) [DUB] 1080p'), 'Dublado');
-  assert.equal(audioFromTitle('Filme.2024.1080p.WEB-DL.DUBBED.mkv'), 'Dublado');
+  // `DUBBED` por extenso é a tag de cena da dublagem EN: sozinho não prova PT
+  // (Godzilla Minus One no topo com chip BR, 2026-11-25); com sinal PT, prova.
+  assert.equal(audioFromTitle('Filme.2024.1080p.WEB-DL.DUBBED.mkv'), '');
+  assert.equal(audioFromTitle('A Paixão de Cristo 2004 DUBBED 1080p'), 'Dublado');
   assert.equal(audioFromTitle('Filme Dual Audio 720p'), 'Dual');
   assert.equal(audioFromTitle('Filme 1080p Audio Duplo'), 'Dual');
   assert.equal(audioFromTitle('Filme 1080p Multiaudio'), 'Dual');

@@ -256,3 +256,39 @@ fn legenda_pt_mantem_origem_br() {
     let out = select_instant(&base(works, sources));
     assert!(out.items[0].is_br);
 }
+
+/// Produção, 2026-11-25: o banco gravou `is_br=1` na dublagem EN de cena e o
+/// 📦 subia ao topo com chip BR. O rótulo velho cai; o PT nomeado fica.
+#[test]
+fn dubbed_de_cena_gravado_br_perde_o_rotulo() {
+    let mut sources = BTreeMap::new();
+    for hash in ["aa", "bb"] {
+        sources.insert(hash.to_string(), vec![source("kickasstorrents-to", true)]);
+    }
+    let works =
+        vec![
+        work(
+            "aa",
+            1,
+            5,
+            Some(magnet(
+                "aa",
+                "Godzilla.Minus.One.2023.DUBBED.1080p.AMZN.WEBRip.DDP5.1.x265.10bit-GalaxyRG265",
+                true,
+                true,
+                141,
+                5,
+            )),
+        ),
+        work(
+            "bb",
+            1,
+            5,
+            Some(magnet("bb", "Filme 2024 [Portuguese Dubbed]", true, true, 1, 5)),
+        ),
+    ];
+    let out = select_instant(&base(works, sources));
+    let br = |h: &str| out.items.iter().find(|i| i.info_hash == h).map(|i| i.is_br);
+    assert_eq!(br("aa"), Some(false));
+    assert_eq!(br("bb"), Some(true));
+}

@@ -22,7 +22,7 @@
 {"id":"pag-022","input":"Movie [DUB]","expected":"explicit=1 foreign=0"}
 {"id":"pag-023","input":"Movie (DUB)","expected":"explicit=1 foreign=0"}
 {"id":"pag-024","input":"Movie DUB 1080p","expected":"explicit=1 foreign=0"}
-{"id":"pag-025","input":"Movie DUBBED","expected":"explicit=1 foreign=0"}
+{"id":"pag-025","input":"Movie DUBBED","expected":"explicit=0 foreign=0"}
 {"id":"pag-026","input":"Movie English Dubbed","expected":"explicit=0 foreign=0"}
 {"id":"pag-027","input":"Movie ENG DUBBED","expected":"explicit=0 foreign=0"}
 {"id":"pag-028","input":"Spirited Away English Dubbed","expected":"explicit=0 foreign=0"}
@@ -35,12 +35,12 @@
 {"id":"pag-035","input":"Фильм DUBBED","expected":"explicit=0 foreign=0"}
 {"id":"pag-036","input":"1080p.WEBRip.LAT.DUB.PINUP","expected":"explicit=0 foreign=0"}
 {"id":"pag-037","input":"Movie LATINO DUBBED","expected":"explicit=0 foreign=0"}
-{"id":"pag-038","input":"Movie POL DUBBED","expected":"explicit=1 foreign=0"}
+{"id":"pag-038","input":"Movie POL DUBBED","expected":"explicit=0 foreign=0"}
 {"id":"pag-039","input":"Movie UNDUBBED","expected":"explicit=0 foreign=0"}
-{"id":"pag-040","input":"DUBBED","expected":"explicit=1 foreign=0"}
+{"id":"pag-040","input":"DUBBED","expected":"explicit=0 foreign=0"}
 {"id":"pag-041","input":"Movie [ DUB ]","expected":"explicit=1 foreign=0"}
 {"id":"pag-042","input":"Movie ( DUB )","expected":"explicit=1 foreign=0"}
-{"id":"pag-043","input":"Movie [DUB] DUBBED","expected":"explicit=1 foreign=0"}
+{"id":"pag-043","input":"Movie [DUB] DUBBED","expected":"explicit=0 foreign=0"}
 {"id":"pag-044","input":"Movie DUB PT-BR","expected":"explicit=1 foreign=0"}
 {"id":"pag-045","input":"Movie DUBLADO DUB","expected":"explicit=1 foreign=0"}
 {"id":"pag-046","input":"Во все тяжкие [DUB] PT-BR","expected":"explicit=1 foreign=0"}

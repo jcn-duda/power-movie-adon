@@ -18,7 +18,7 @@
   },
   "output": {
     "path": "rust/golden/audio-presentation.jsonl",
-    "sha256": "8c7a1c65329efad5f7f351a4b87b9f12e8eb04a5b8c54c5a16485ae21e90bf4d",
+    "sha256": "e7358a59423cc7987880359e0909360848072181a7db93322e132fd5108026a3",
     "lines": 170
   },
   "node": {

@@ -27,7 +27,7 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 use crate::audio_cleanup_verdicts::{has_pt_audio_mark, strong_en_scene_mark};
-use crate::audio_lang::foreign_lang_named_for_bucket;
+use crate::audio_lang::{foreign_lang_named_for_bucket, generic_dub_proves_pt};
 use crate::audio_presentation::{audio_from_title, looks_pt_br};
 use crate::br_origin::{br_origin_mark, has_pt_signs};
 use crate::pt_audio_guards::has_explicit_foreign_audio;
@@ -79,7 +79,10 @@ pub fn foreign_proof_label(
 /// Era privado quando só `classify*` chamava; a ponte napi expõe o MESMO
 /// predicado para `audio-quality.ts` (o TS sai), então é público — sem cópia.
 pub fn audio_bucket(title: &str) -> &'static str {
-    if looks_pt_br(title) {
+    // O `DUBBED` genérico deixou de PROMOVER a BR (é dublagem EN em tracker
+    // global), mas aqui o balde decide o que a varredura APAGA da conta: na
+    // dúvida o arquivo fica, como sempre ficou.
+    if looks_pt_br(title) || generic_dub_proves_pt(title) {
         return "dub";
     }
     if audio_from_title(title) == "Dual" {

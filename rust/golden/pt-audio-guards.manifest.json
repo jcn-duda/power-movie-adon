@@ -17,7 +17,7 @@
   },
   "output": {
     "path": "rust/golden/pt-audio-guards.jsonl",
-    "sha256": "cdde50c1f277a883a116fade22fa7ba493464f1d75e6f8eaf4fe36257c46e17d",
+    "sha256": "7f8df21cdd13d27dd4d62b486dedd6e351b81ee5acb4ee8e2de20d6bb0698edd",
     "lines": 140
   },
   "node": {

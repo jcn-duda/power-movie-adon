@@ -8,40 +8,6 @@
   "body": {
     "streams": [
       {
-        "infoHash": "d081021d197a7f5ffaef33b6930f490469d19812",
-        "title": "Deep.Red.1975.THEATRICAL.DUBBED.720p.BluRay.x264-LiViDiTY [Publi\n📦 👤 ~ 💾 4.36 GB ⚙️ The Pirate Bay",
-        "name": "📦 · 720p Cinema BluRay BR · The Pirate Bay · 👤 ~",
-        "behaviorHints": {
-          "bingeGroup": "powerm-720p-BluRay"
-        },
-        "sources": [
-          "tracker:udp://tracker.opentrackr.org:1337/announce",
-          "tracker:udp://open.stealth.si:80/announce",
-          "tracker:udp://tracker.torrent.eu.org:451/announce",
-          "tracker:udp://exodus.desync.com:6969/announce",
-          "tracker:udp://open.demonii.com:1337/announce",
-          "tracker:udp://tracker.openbittorrent.com:6969/announce"
-        ],
-        "size": "4.36 GB"
-      },
-      {
-        "infoHash": "d50faa42352f9ec6e16b1698888113d0946097c6",
-        "title": "Deep Red 1975 REMASTERED DIRECTORS CUT DUBBED BRRip XviD B4ND1T69\n📦 👤 ~ 💾 1.40 GB ⚙️ TheRARBG",
-        "name": "📦 · DC BR · TheRARBG · 👤 ~",
-        "behaviorHints": {
-          "bingeGroup": "powerm-na-any"
-        },
-        "sources": [
-          "tracker:udp://tracker.opentrackr.org:1337/announce",
-          "tracker:udp://open.stealth.si:80/announce",
-          "tracker:udp://tracker.torrent.eu.org:451/announce",
-          "tracker:udp://exodus.desync.com:6969/announce",
-          "tracker:udp://open.demonii.com:1337/announce",
-          "tracker:udp://tracker.openbittorrent.com:6969/announce"
-        ],
-        "size": "1.40 GB"
-      },
-      {
         "infoHash": "3a1871e396bfd90cb6f5aa2ebddf84f3f822140d",
         "title": "Prelúdio Para Matar [1080p LEGENDADO]\n📦 👤 1 ⚙️ Apache Torrent",
         "name": "📦 · 1080p LEG BR · Apache Torrent · 👤 1",

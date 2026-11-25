@@ -91,7 +91,7 @@
 {"id":"apr-091","input":"{\"op\":\"audio\",\"title\":\"Movie AUDIO-PT-BR\"}","expected":"Dublado"}
 {"id":"apr-092","input":"{\"op\":\"audio\",\"title\":\"Movie [DUB] 1080p\"}","expected":"Dublado"}
 {"id":"apr-093","input":"{\"op\":\"audio\",\"title\":\"Movie English Dubbed\"}","expected":""}
-{"id":"apr-094","input":"{\"op\":\"audio\",\"title\":\"Movie DUBBED\"}","expected":"Dublado"}
+{"id":"apr-094","input":"{\"op\":\"audio\",\"title\":\"Movie DUBBED\"}","expected":""}
 {"id":"apr-095","input":"{\"op\":\"audio\",\"title\":\"Movie DUAL ÁUDIO\"}","expected":"Dual"}
 {"id":"apr-096","input":"{\"op\":\"audio\",\"title\":\"Movie DUAL ÁUDIO\"}","expected":"Dual"}
 {"id":"apr-097","input":"{\"op\":\"audio\",\"title\":\"Movie Dublada\"}","expected":"Dublado"}
