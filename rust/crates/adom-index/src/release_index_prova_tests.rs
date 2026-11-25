@@ -107,6 +107,28 @@ fn miss_de_temporada_vale_para_todos_os_episodios_dela() {
     assert!(!s.is_missing("tt1", ep(3, 1), H1, NOW));
 }
 
+/// Piranha (1995) × "Piranha Collection 1978-2012": o play não achou a obra no
+/// pack. A prova é por filme e não vaza para outra obra nem para episódio.
+#[test]
+fn miss_de_filme_vale_so_para_a_obra_do_pack() {
+    let s = store();
+    assert!(s.mark_missing("tt0114137", filme(), H1, NOW).unwrap());
+    assert!(cru(&s, &format!("{}miss:tt0114137:{H1}", idx_prefix())).contains("\"at\""));
+    assert!(s.is_missing("tt0114137", filme(), &H1.to_uppercase(), NOW));
+    assert!(
+        !s.is_missing("tt0078087", filme(), H1, NOW),
+        "outra obra do pack"
+    );
+    assert!(!s.is_missing("tt0114137", ep(1, 1), H1, NOW));
+    assert!(!s.is_missing("tt0114137", filme(), H1, NOW + TTL_MS + 1));
+    // Episódio sem temporada continua sem chave.
+    let meio = WorkTarget {
+        season: None,
+        episode: Some(1),
+    };
+    assert!(!s.mark_missing("tt0114137", meio, H1, NOW).unwrap());
+}
+
 #[test]
 fn file_evidence_grava_no_formato_do_node() {
     let s = store();

@@ -280,8 +280,8 @@ impl ReleaseIndexSource for StubIndex {
     fn missing_hashes(
         &self,
         _imdb: &str,
-        _season: i64,
-        _episode: i64,
+        _season: Option<i64>,
+        _episode: Option<i64>,
         hashes: &[String],
         _now_ms: i64,
     ) -> std::collections::HashSet<String> {

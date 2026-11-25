@@ -243,11 +243,15 @@ impl Orchestrator {
         items: &[RawItem],
         now_ms: i64,
     ) -> HashSet<String> {
-        let (Some(index), Some(season), Some(episode)) =
-            (self.index.as_ref(), meta.season, meta.episode)
-        else {
+        let Some(index) = self.index.as_ref() else {
             return HashSet::new();
         };
+        // Episódio exige S e E; filme (nenhum dos dois) lê a prova por obra
+        // do pack multi-obra. Meio-termo não tem prova.
+        let (season, episode) = (meta.season, meta.episode);
+        if season.is_some() != episode.is_some() {
+            return HashSet::new();
+        }
         if meta.imdb_id.is_empty() {
             return HashSet::new();
         }
@@ -263,8 +267,12 @@ impl Orchestrator {
         }
         let missing = index.missing_hashes(&meta.imdb_id, season, episode, &hashes, now_ms);
         if !missing.is_empty() {
+            let alvo = match (season, episode) {
+                (Some(s), Some(e)) => format!("S{s}E{e}"),
+                _ => "da obra".to_string(),
+            };
             eprintln!(
-                "[search] idx-miss: {} hash(es) provado(s) fora de S{season}E{episode} saem da lista ({})",
+                "[search] idx-miss: {} hash(es) provado(s) fora {alvo} saem da lista ({})",
                 missing.len(),
                 meta.imdb_id
             );

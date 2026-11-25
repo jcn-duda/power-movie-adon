@@ -89,12 +89,13 @@ pub trait ReleaseIndexSource: Send + Sync {
 
     /// `releaseIndex.isMissing` em lote: dos `hashes`, os que o play ou a
     /// auditoria já provaram NÃO servir este episódio (`miss`/`missS` vivos).
-    /// Só série com S/E. Default vazio: stub de teste e colhedor não cortam.
+    /// Série com S/E, ou filme (`None`/`None`) para o pack multi-obra que o
+    /// play provou não conter a obra. Default vazio: stub de teste e colhedor não cortam.
     fn missing_hashes(
         &self,
         _imdb: &str,
-        _season: i64,
-        _episode: i64,
+        _season: Option<i64>,
+        _episode: Option<i64>,
         _hashes: &[String],
         _now_ms: i64,
     ) -> std::collections::HashSet<String> {

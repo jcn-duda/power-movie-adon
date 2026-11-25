@@ -81,12 +81,12 @@ impl ReleaseIndexSource for NativeReleaseIndex {
     fn missing_hashes(
         &self,
         imdb: &str,
-        season: i64,
-        episode: i64,
+        season: Option<i64>,
+        episode: Option<i64>,
         hashes: &[String],
         now_ms: i64,
     ) -> std::collections::HashSet<String> {
-        let target = work_target(Some(season), Some(episode));
+        let target = work_target(season, episode);
         hashes
             .iter()
             .map(|hash| hash.to_ascii_lowercase())
@@ -274,7 +274,7 @@ mod tests {
             .mark_missing_season("tt2356777", 3, temporada, NOW)
             .expect("missS");
         let hashes = [ep.to_uppercase(), temporada.into(), HASH.into()];
-        let s3e1 = index.missing_hashes("tt2356777", 3, 1, &hashes, NOW);
+        let s3e1 = index.missing_hashes("tt2356777", Some(3), Some(1), &hashes, NOW);
         assert_eq!(
             s3e1,
             [ep.to_string(), temporada.to_string()]
@@ -282,11 +282,33 @@ mod tests {
                 .collect()
         );
         // Outro episódio da S3: só a marca da temporada vale.
-        let s3e2 = index.missing_hashes("tt2356777", 3, 2, &hashes, NOW);
+        let s3e2 = index.missing_hashes("tt2356777", Some(3), Some(2), &hashes, NOW);
         assert_eq!(s3e2, [temporada.to_string()].into_iter().collect());
         // Outra temporada não herda nada.
         assert!(index
-            .missing_hashes("tt2356777", 1, 1, &hashes, NOW)
+            .missing_hashes("tt2356777", Some(1), Some(1), &hashes, NOW)
+            .is_empty());
+    }
+
+    /// Piranha (1995): o play provou que a coleção 1978-2012 não contém a
+    /// obra. A busca do filme (sem S/E) passa a cortar o hash.
+    #[test]
+    fn missing_hashes_le_miss_de_filme() {
+        let index = NativeReleaseIndex::memory();
+        let pack = "dddddddddddddddddddddddddddddddddddddddd";
+        let filme = WorkTarget {
+            season: None,
+            episode: None,
+        };
+        index
+            .0
+            .mark_missing("tt0114137", filme, pack, NOW)
+            .expect("miss");
+        let hashes = [pack.to_uppercase(), HASH.into()];
+        let cortados = index.missing_hashes("tt0114137", None, None, &hashes, NOW);
+        assert_eq!(cortados, [pack.to_string()].into_iter().collect());
+        assert!(index
+            .missing_hashes("tt0078087", None, None, &hashes, NOW)
             .is_empty());
     }
 }

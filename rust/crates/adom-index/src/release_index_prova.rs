@@ -62,6 +62,21 @@ fn imdb_da_chave(rest: &str) -> Option<&str> {
     }
 }
 
+/// Chave do `miss`: `miss:tt:S2E5:<hash>` para episódio, `miss:tt:<hash>` para
+/// filme (o play provou que o pack multi-obra não contém a obra). Temporada
+/// sem episódio, ou episódio sem temporada, não tem chave.
+fn chave_miss(imdb_id: &str, location: WorkTarget, hash: &str) -> Option<String> {
+    let hash = hash.to_lowercase();
+    match (location.season, location.episode) {
+        (Some(season), Some(episode)) => Some(format!(
+            "{}miss:{imdb_id}:S{season}E{episode}:{hash}",
+            idx_prefix()
+        )),
+        (None, None) => Some(format!("{}miss:{imdb_id}:{hash}", idx_prefix())),
+        _ => None,
+    }
+}
+
 /// `/^tt\d+$/` do `forgetAutofetchHash`: o id inteiro precisa ser `tt` + dígitos.
 fn imdb_exato(imdb_id: &str) -> bool {
     imdb_id
@@ -151,8 +166,9 @@ impl ReleaseIndexStore {
         Ok(nova)
     }
 
-    /// `markMissing`: este hash NÃO serve este episódio. Sem temporada e
-    /// episódio não há o que provar.
+    /// `markMissing`: este hash NÃO serve este episódio — ou, sem temporada
+    /// nem episódio, NÃO contém este filme (pack multi-obra cujo play não achou
+    /// a obra). Temporada sem episódio não prova nada.
     pub fn mark_missing(
         &self,
         imdb_id: &str,
@@ -160,17 +176,12 @@ impl ReleaseIndexStore {
         hash: &str,
         now_ms: i64,
     ) -> Result<bool, String> {
-        let (Some(season), Some(episode)) = (location.season, location.episode) else {
+        let Some(key) = chave_miss(imdb_id, location, hash) else {
             return Ok(false);
         };
         if !self.habilitado(imdb_id, hash) {
             return Ok(false);
         }
-        let key = format!(
-            "{}miss:{imdb_id}:S{season}E{episode}:{}",
-            idx_prefix(),
-            hash.to_lowercase()
-        );
         self.marca_nova(&key, now_ms)
     }
 
@@ -208,14 +219,9 @@ impl ReleaseIndexStore {
                 return true;
             }
         }
-        let (Some(season), Some(episode)) = (location.season, location.episode) else {
+        let Some(key) = chave_miss(imdb_id, location, hash) else {
             return false;
         };
-        let key = format!(
-            "{}miss:{imdb_id}:S{season}E{episode}:{}",
-            idx_prefix(),
-            hash.to_lowercase()
-        );
         self.vivo(&key, now_ms).is_some()
     }
 

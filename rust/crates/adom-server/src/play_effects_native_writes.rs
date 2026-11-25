@@ -301,12 +301,18 @@ impl NativePlayEffects {
                 index.mark_lied(&job.imdb, target, &job.hash, now),
             ),
             IndexMark::Missing | IndexMark::MissingSeason => {
-                // Episódio ausente só se prova com S e E; sem eles não há o que marcar.
-                if job.season.is_some() && job.episode.is_some() {
-                    grava(
+                // Episódio ausente se prova com S e E; filme (sem nenhum dos
+                // dois) é o pack multi-obra sem a obra. Meio-termo não marca.
+                match (job.season, job.episode) {
+                    (Some(_), Some(_)) => grava(
                         "episódio ausente",
                         index.mark_missing(&job.imdb, target, &job.hash, now),
-                    );
+                    ),
+                    (None, None) => grava(
+                        "obra ausente do pack",
+                        index.mark_missing(&job.imdb, target, &job.hash, now),
+                    ),
+                    _ => {}
                 }
                 // O arquivo não declara episódio nenhum: a temporada inteira deste hash cai.
                 if mark == IndexMark::MissingSeason {

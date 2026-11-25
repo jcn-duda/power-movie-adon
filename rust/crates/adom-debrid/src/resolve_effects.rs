@@ -59,7 +59,21 @@ pub fn resolve_effect(service: &str, err: &DebridError) -> Value {
             evidence_json(evidence.as_deref()),
             context_json(context.as_deref()),
         ),
-        DebridError::WorkPick(_) => neutral(404, "work_pick", WORK_BODY),
+        // Falha por obra vem da lista REAL de arquivos: o pack não tem o filme
+        // ("Collection 1978-2012" listada para o de 1995). Prova hash × obra no
+        // índice e lista refeita, senão o stream morto volta a cada abertura.
+        DebridError::WorkPick(_) => effect(
+            404,
+            "work_pick",
+            WORK_BODY,
+            None,
+            false,
+            false,
+            "obra",
+            Some("missing"),
+            None,
+            None,
+        ),
         DebridError::EpisodePick {
             evidence, context, ..
         } => episode_effect(evidence.as_deref(), context.as_deref()),
@@ -244,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn rate_limit_e_work_pick_ficam_neutros() {
+    fn rate_limit_fica_neutro_e_work_pick_prova_a_obra() {
         let rate = resolve_effect(
             "realdebrid",
             &DebridError::RateLimit {
@@ -269,9 +283,10 @@ mod tests {
             work["body"],
             "não foi possível identificar este filme dentro do pack"
         );
+        // Não condena o magnet (serve as outras obras do pack): só esta obra.
         assert!(work["mark"].is_null());
-        assert_eq!(work["invalidate"], "none");
-        assert!(work["index"].is_null());
+        assert_eq!(work["invalidate"], "obra");
+        assert_eq!(work["index"], "missing");
     }
 
     #[test]
