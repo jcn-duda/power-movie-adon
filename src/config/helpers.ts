@@ -74,7 +74,7 @@ export function indexerList(value: unknown) {
 // os dois buscarem em sites distintos. Trocar de domínio se faz aqui.
 // 2026-10-24: bludvfilmes.xyz e bludvfilmes1.xyz redirecionam (via desafio do
 // Cloudflare) para bludvfilmes2.xyz; os três ficam nas allowlists.
-export const BLUDV_DEFAULT_URL = 'https://bludvfilmes2.xyz';
+export const BLUDV_DEFAULT_URL = 'https://bludv2.com';
 
 // Este arquivo roda em dist/src/config (um nível ABAIXO do antigo config.ts
 // único, que ficava em dist/src): subir TRÊS níveis preserva data/cache.db no

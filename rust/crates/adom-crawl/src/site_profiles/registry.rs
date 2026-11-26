@@ -147,6 +147,10 @@ fn build_bludv() -> SiteNetworkConfig {
             "bludvfilmes.xyz",
             "bludvfilmes1.xyz",
             "bludvfilmes2.xyz",
+            // 2026-11-26: bludvfilmes.xyz e bludvfilmes2.xyz → 301 → bludv2.com
+            // (tema novo, sem desafio no fetch direto). Fora daqui o redirect
+            // vira `blocked_host:bludv2.com` e o resolver inteiro cai em 502.
+            "bludv2.com",
             "bludv.net",
             "bludv.xyz",
             "bludv.to",
@@ -202,7 +206,10 @@ fn build_nerdfilmes() -> SiteNetworkConfig {
     }
 }
 
-/// ComandoTorrents: sem Flare, usa a régua compartilhada de protetor.
+/// ComandoTorrents: régua compartilhada de protetor. Flare desde 2026-11-26:
+/// a home abre direto, mas `/?s=` devolve 403 "Just a moment..." do Cloudflare
+/// e o resolver caía em 502 em TODA busca. O fetch continua direto primeiro;
+/// o FlareSolverr só entra no desafio, e a sessão (`cf_clearance`) é reusada.
 fn build_comandotorrents() -> SiteNetworkConfig {
     SiteNetworkConfig {
         site_id: "comandotorrents".into(),
@@ -215,8 +222,8 @@ fn build_comandotorrents() -> SiteNetworkConfig {
         assert_only_suffixes: Vec::new(),
         timeout_ms: 15_000,
         max_hops: 10,
-        uses_flare: false,
-        flare_session_ttl_ms: 0,
+        uses_flare: true,
+        flare_session_ttl_ms: FLARE_SESSION_TTL_MS,
         user_agent: super::config::DEFAULT_USER_AGENT.to_string(),
         own_pace: false,
         min_gap_ms: None,

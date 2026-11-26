@@ -19,6 +19,7 @@ static GATE_HOSTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
         "bludvfilmes.xyz",
         "bludvfilmes1.xyz",
         "bludvfilmes2.xyz",
+        "bludv2.com",
         "bludv.net",
         "bludv.xyz",
         "bludv.to",

@@ -153,6 +153,7 @@ const BLUDV_GATE_HOSTS: &[&str] = &[
     "bludvfilmes.xyz",
     "bludvfilmes1.xyz",
     "bludvfilmes2.xyz",
+    "bludv2.com",
     "bludv.net",
     "bludv.xyz",
     "bludv.to",

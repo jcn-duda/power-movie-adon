@@ -201,6 +201,22 @@ static RE_POST: LazyLock<FancyRegex> = LazyLock::new(|| {
     )
     .expect("cartão do bludv")
 });
+/// Tema de 2026-11 (bludv2.com): `<article class="post …">` com o título em
+/// `<h2 class="post-titulo"><a href>`. O layout antigo não existe mais lá, e
+/// sem esta segunda forma a busca devolvia 0 posts com o site no ar.
+static RE_POST_ARTICLE: LazyLock<FancyRegex> = LazyLock::new(|| {
+    FancyRegex::new(
+        r#"<article\b[^>]*\bclass="post\b[^"]*"[^>]*>\s*<h2 class="post-titulo">\s*<a\s+[^>]*?href=(["'])([^"']+)\1[^>]*>([\s\S]*?)</a>"#,
+    )
+    .expect("artigo do bludv")
+});
+const ARTICLE_MARK: &str = "<article";
+/// "Título Original" do tema novo: o `:` vem dentro de `<i class="bp-dp">` e a
+/// regex antiga (`Original:`) não casa. Só entra quando a antiga falhou.
+static RE_ORIGINAL_BP: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"bp-original"[\s\S]{0,160}?<span class="bp-v">\s*([^<\n]{2,80}?)\s*</span>"#)
+        .expect("título original do tema novo do bludv")
+});
 static RE_POSTER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"<img[^>]+src="([^"]+)""#).expect("poster do bludv"));
 static RE_DATE: LazyLock<Regex> =
@@ -211,9 +227,9 @@ static RE_ORIGINAL: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Início do próximo `<div class="post">` depois de `start` (ou o fim do HTML).
-fn next_post_start(html: &str, start: usize) -> usize {
+fn next_post_start(html: &str, start: usize, mark: &str) -> usize {
     html[start + 1..]
-        .find(POST_MARK)
+        .find(mark)
         .map_or(html.len(), |i| start + 1 + i)
 }
 
@@ -238,7 +254,14 @@ pub fn parse_search_entries(html: &str, base_url: &str) -> Vec<SearchEntry> {
     };
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for caps in RE_POST.captures_iter(html) {
+    // As duas formas não convivem na mesma página; o tema antigo tem
+    // precedência para a ordem e o golden do TS continuarem idênticos.
+    let (re, mark): (&FancyRegex, &str) = if html.contains(POST_MARK) {
+        (&RE_POST, POST_MARK)
+    } else {
+        (&RE_POST_ARTICLE, ARTICLE_MARK)
+    };
+    for caps in re.captures_iter(html) {
         // O backtracking do JS não falha; um estouro do fancy para a leitura.
         let Ok(caps) = caps else {
             break;
@@ -255,7 +278,8 @@ pub fn parse_search_entries(html: &str, base_url: &str) -> Vec<SearchEntry> {
             continue;
         }
         let start = whole.start();
-        let end = next_post_start(html, start).min(utf16_window_end(html, start, MAX_CARD_WINDOW));
+        let end =
+            next_post_start(html, start, mark).min(utf16_window_end(html, start, MAX_CARD_WINDOW));
         let block = &html[start..end];
         let title = strip_tags(caps.get(3).map_or("", |m| m.as_str()));
         if is_generic_list_post(&title) {
@@ -271,6 +295,7 @@ pub fn parse_search_entries(html: &str, base_url: &str) -> Vec<SearchEntry> {
             .map(|m| m.as_str().to_string());
         let original = RE_ORIGINAL
             .captures(block)
+            .or_else(|| RE_ORIGINAL_BP.captures(block))
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string());
         out.push(SearchEntry {
